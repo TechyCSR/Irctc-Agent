@@ -56,6 +56,42 @@ class WatchdogManager:
             return True
         return False
 
+    async def check_all(self, client) -> List[Dict[str, Any]]:
+        """Queries live seat status for all active subscriptions and flags transitions."""
+        results = []
+        for alert_id, alert in list(self._alerts.items()):
+            if alert["status"] != "ACTIVE":
+                continue
+            try:
+                trains = await client.fetch_trains(
+                    alert["from_stn"],
+                    alert["to_stn"],
+                    alert["doj"],
+                    alert["quota"]
+                )
+                target_train = next(
+                    (t for t in trains if str(t.get("train_number")) == alert["train_no"]),
+                    None
+                )
+                alert["last_checked"] = datetime.now().isoformat()
+                if target_train:
+                    avail = target_train.get("availability", {}).get(alert["travel_class"], {})
+                    raw_status = avail.get("raw_status") or "WL/REGRET"
+                    alert["last_seen_seats"] = raw_status
+                    is_target_met = (
+                        (alert["target_status"] == "AVAILABLE" and avail.get("is_available")) or
+                        (alert["target_status"] == "RAC" and (avail.get("is_available") or avail.get("is_rac")))
+                    )
+                    if is_target_met:
+                        alert["status"] = "TRIGGERED"
+                        alert["triggered_at"] = datetime.now().isoformat()
+                results.append(alert)
+            except Exception as e:
+                alert["last_checked"] = datetime.now().isoformat()
+                alert["last_seen_seats"] = f"Error: {e}"
+                results.append(alert)
+        return results
+
 
 def calculate_charting_status(
     departure_time_str: str,

@@ -90,40 +90,60 @@ async def get_popular_stations():
     return results
 
 
+def normalize_date_ddmmyyyy(date_str: str) -> str:
+    """Normalizes any date input (YYYY-MM-DD, DD-MM-YYYY, YYYY/MM/DD, DD/MM/YYYY) into DD-MM-YYYY."""
+    if not date_str:
+        return datetime.now().strftime("%d-%m-%Y")
+    clean = str(date_str).strip().replace("/", "-")
+    parts = clean.split("-")
+    if len(parts) == 3:
+        if len(parts[0]) == 4:  # YYYY-MM-DD
+            return f"{parts[2].zfill(2)}-{parts[1].zfill(2)}-{parts[0]}"
+        elif len(parts[2]) == 4:  # DD-MM-YYYY
+            return f"{parts[0].zfill(2)}-{parts[1].zfill(2)}-{parts[2]}"
+    return clean
+
+
 @app.get("/api/search")
 async def search_routes(
     from_stn: str = Query(..., alias="from", description="Origin station code e.g. JU or NDLS"),
     to_stn: str = Query(..., alias="to", description="Destination station code e.g. SBC or CSMT"),
-    date: str = Query(..., description="Date of journey in DD-MM-YYYY format"),
+    date: str = Query(..., description="Date of journey in DD-MM-YYYY or YYYY-MM-DD format"),
     quota: str = Query("GN", description="Quota code: GN, TQ, etc."),
     preferred_class: Optional[str] = Query(None, alias="class", description="Preferred class code e.g. 3A, 2A, SL")
 ):
     """
     Standard synchronous REST search endpoint returning scored and deduplicated routes.
     """
-    cache_key = f"{from_stn.upper()}:{to_stn.upper()}:{date}:{quota.upper()}:{preferred_class or 'ALL'}"
+    src = from_stn.upper().strip()
+    dst = to_stn.upper().strip()
+    if src == dst:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Origin and destination stations cannot be the same."})
+
+    norm_date = normalize_date_ddmmyyyy(date)
+    cache_key = f"{src}:{dst}:{norm_date}:{quota.upper()}:{preferred_class or 'ALL'}"
     cached = await search_cache.get(cache_key)
     if cached:
         return cached
 
     try:
         ranked = await engine.search_all(
-            origin_code=from_stn,
-            dest_code=to_stn,
-            doj=date,
+            origin_code=src,
+            dest_code=dst,
+            doj=norm_date,
             quota=quota,
             preferred_class=preferred_class
         )
 
-        serialized = [engine._serialize_itin(it) for it in ranked[:60]]
+        serialized = [engine._serialize_itin(it, quota=quota) for it in ranked[:60]]
         confirmed_count = sum(1 for it in ranked if it.booking_confidence == "CONFIRMED")
         lowest_fare = min((it.best_fare for it in ranked if it.best_fare > 0), default=0)
 
         res_payload = {
             "status": "success",
-            "origin": from_stn.upper(),
-            "destination": to_stn.upper(),
-            "date": date,
+            "origin": src,
+            "destination": dst,
+            "date": norm_date,
             "total_evaluated": len(ranked),
             "total_confirmed": confirmed_count,
             "lowest_fare": lowest_fare,
@@ -147,9 +167,16 @@ async def stream_search_routes(
     High-performance Server-Sent Events (SSE) streaming search.
     Instantly returns direct trains within 300ms, then streams connecting routes as they are found.
     """
+    src = from_stn.upper().strip()
+    dst = to_stn.upper().strip()
+    if src == dst:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Origin and destination stations cannot be the same."})
+
+    norm_date = normalize_date_ddmmyyyy(date)
+
     async def event_generator():
         try:
-            async for event in engine.stream_search(from_stn, to_stn, date, quota):
+            async for event in engine.stream_search(src, dst, norm_date, quota):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             logger.exception("Streaming error")
@@ -177,7 +204,7 @@ async def get_train_schedule(train_no: str, date: Optional[str] = Query(None)):
     if not clean_no:
         return JSONResponse(status_code=400, content={"error": "Invalid train number"})
 
-    use_date = date or datetime.now().strftime("%d-%m-%Y")
+    use_date = normalize_date_ddmmyyyy(date) if date else datetime.now().strftime("%d-%m-%Y")
     cache_key = f"{clean_no}_{use_date}"
     cached = await schedule_cache.get(cache_key)
     if cached:
@@ -226,7 +253,7 @@ async def get_train_schedule(train_no: str, date: Optional[str] = Query(None)):
 async def get_multi_date_availability(
     from_stn: str = Query(..., alias="from"),
     to_stn: str = Query(..., alias="to"),
-    start_date: str = Query(..., description="DD-MM-YYYY format"),
+    start_date: str = Query(..., description="DD-MM-YYYY or YYYY-MM-DD format"),
     days: int = Query(5, ge=1, le=7),
     quota: str = Query("GN")
 ):
@@ -234,23 +261,25 @@ async def get_multi_date_availability(
     Checks direct availability across 5 consecutive travel dates in parallel.
     Provides instant multi-date comparison strip.
     """
-    from datetime import datetime, timedelta
+    src = from_stn.upper().strip()
+    dst = to_stn.upper().strip()
+    norm_start_date = normalize_date_ddmmyyyy(start_date)
 
-    md_cache_key = f"{from_stn.upper()}:{to_stn.upper()}:{start_date}:{days}:{quota.upper()}"
+    md_cache_key = f"{src}:{dst}:{norm_start_date}:{days}:{quota.upper()}"
     cached = await multidate_cache.get(md_cache_key)
     if cached:
         return cached
 
     try:
-        start_dt = datetime.strptime(start_date, "%d-%m-%Y")
+        start_dt = datetime.strptime(norm_start_date, "%d-%m-%Y")
     except Exception:
-        return JSONResponse(status_code=400, content={"error": "Invalid date format. Use DD-MM-YYYY"})
+        return JSONResponse(status_code=400, content={"error": "Invalid date format. Use DD-MM-YYYY or YYYY-MM-DD"})
 
     date_objs = [start_dt + timedelta(days=i) for i in range(days)]
     date_strs = [d.strftime("%d-%m-%Y") for d in date_objs]
 
     tasks = [
-        engine.client.fetch_trains(from_stn.upper(), to_stn.upper(), d_str, quota)
+        engine.client.fetch_trains(src, dst, d_str, quota)
         for d_str in date_strs
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -298,8 +327,8 @@ async def get_multi_date_availability(
         })
 
     response_data = {
-        "from": from_stn.upper(),
-        "to": to_stn.upper(),
+        "from": src,
+        "to": dst,
         "quota": quota,
         "dates": summary
     }
@@ -310,18 +339,21 @@ async def get_multi_date_availability(
 @app.get("/api/charting/status")
 async def get_charting_status(
     dep_time: str = Query(..., description="Train departure time HH:MM"),
-    date: str = Query(..., description="Journey date DD-MM-YYYY")
+    date: str = Query(..., description="Journey date DD-MM-YYYY or YYYY-MM-DD")
 ):
     """Calculates 1st & 2nd chart preparation timeline and current booking vacancy window."""
-    return calculate_charting_status(dep_time, date)
+    norm_date = normalize_date_ddmmyyyy(date)
+    return calculate_charting_status(dep_time, norm_date)
 
 
 @app.post("/api/watchdog/subscribe")
 async def subscribe_watchdog(payload: dict):
     """Subscribes an alert for seat availability changes on a train."""
+    raw_doj = payload.get("doj", "")
+    norm_doj = normalize_date_ddmmyyyy(raw_doj)
     return watchdog_manager.subscribe(
         train_no=payload.get("train_no", ""),
-        doj=payload.get("doj", ""),
+        doj=norm_doj,
         from_stn=payload.get("from_stn", ""),
         to_stn=payload.get("to_stn", ""),
         travel_class=payload.get("travel_class", "3A"),
@@ -342,6 +374,13 @@ async def list_watchdogs():
 async def delete_watchdog(alert_id: str):
     """Removes an active seat watchdog alert."""
     return {"success": watchdog_manager.remove_alert(alert_id)}
+
+
+@app.post("/api/watchdog/check")
+async def trigger_watchdog_check():
+    """Checks live seat status for active watchdog subscriptions."""
+    updated = await watchdog_manager.check_all(engine.client)
+    return {"checked_count": len(updated), "alerts": updated}
 
 
 @app.get("/api/quotas")

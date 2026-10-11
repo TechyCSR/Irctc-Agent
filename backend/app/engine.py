@@ -67,6 +67,20 @@ def parse_duration_to_minutes(dur_str: str) -> int:
     return hours * 60 + minutes
 
 
+def normalize_date_ddmmyyyy(date_str: str) -> str:
+    """Normalizes any date string (YYYY-MM-DD, DD-MM-YYYY, YYYY/MM/DD, DD/MM/YYYY) into DD-MM-YYYY."""
+    if not date_str:
+        return datetime.datetime.now().strftime("%d-%m-%Y")
+    clean = str(date_str).strip().replace("/", "-")
+    parts = clean.split("-")
+    if len(parts) == 3:
+        if len(parts[0]) == 4:  # YYYY-MM-DD
+            return f"{parts[2].zfill(2)}-{parts[1].zfill(2)}-{parts[0]}"
+        elif len(parts[2]) == 4:  # DD-MM-YYYY
+            return f"{parts[0].zfill(2)}-{parts[1].zfill(2)}-{parts[2]}"
+    return clean
+
+
 def generate_irctc_link(
     train_no: str,
     doj: str,
@@ -77,9 +91,10 @@ def generate_irctc_link(
     boarding_stn: Optional[str] = None
 ) -> str:
     """Constructs official direct IRCTC e-ticketing URL with pre-filled journey details."""
-    parts = doj.split("-")
-    dt_compact = f"{parts[2]}{parts[1]}{parts[0]}" if len(parts) == 3 else doj
-    clean_no = "".join(filter(str.isdigit, train_no)) or train_no
+    clean_doj = normalize_date_ddmmyyyy(doj)
+    parts = clean_doj.split("-")
+    dt_compact = f"{parts[2]}{parts[1]}{parts[0]}" if len(parts) == 3 else clean_doj
+    clean_no = "".join(filter(str.isdigit, str(train_no))) or str(train_no)
     url = f"https://www.irctc.co.in/nget/booking?trainNo={clean_no}&date={dt_compact}&from={src}&to={dest}&class={cls}&quota={quota}"
     if boarding_stn and boarding_stn != src:
         url += f"&boardingStn={boarding_stn}"
@@ -102,6 +117,7 @@ class PublicSearchEngine:
         quota: str = "GN"
     ) -> List[CleanItinerary]:
         """Searches direct trains between origin and destination clusters."""
+        doj = normalize_date_ddmmyyyy(doj)
         origin_stations = get_cluster_station_codes(origin_code)
         dest_stations = get_cluster_station_codes(dest_code)
 
@@ -172,6 +188,7 @@ class PublicSearchEngine:
         corridor_hubs: Optional[List[CorridorHub]] = None
     ) -> List[CleanItinerary]:
         """Searches 1-transfer routes through dynamically selected junction hubs."""
+        doj = normalize_date_ddmmyyyy(doj)
         if corridor_hubs is None:
             corridor_hubs = select_corridor_hubs(origin_code, dest_code, max_hubs=6)
 
@@ -373,6 +390,7 @@ class PublicSearchEngine:
         2. Point-Beyond Boarding: Books from originating station where General Quota has confirmed seats,
            and sets user's station as the official boarding point.
         """
+        doj = normalize_date_ddmmyyyy(doj)
         lifehacks: List[CleanItinerary] = []
         if not direct_itins:
             return lifehacks
@@ -555,6 +573,7 @@ class PublicSearchEngine:
         preferred_class: Optional[str] = None
     ) -> List[CleanItinerary]:
         """Executes full search and returns scored, deduplicated itineraries."""
+        doj = normalize_date_ddmmyyyy(doj)
         corridor_hubs = select_corridor_hubs(origin_code, dest_code, max_hubs=6)
 
         direct_task = self.search_direct_trains(origin_code, dest_code, doj, quota)
@@ -579,6 +598,7 @@ class PublicSearchEngine:
         Progressive streaming generator emitting Server-Sent Events (SSE).
         Yields direct trains immediately, then corridor updates as they are found.
         """
+        doj = normalize_date_ddmmyyyy(doj)
         corridor_hubs = select_corridor_hubs(origin_code, dest_code, max_hubs=6)
 
         yield {
@@ -598,7 +618,7 @@ class PublicSearchEngine:
         yield {
             "type": "direct_trains",
             "count": len(scored_directs),
-            "routes": [self._serialize_itin(it) for it in scored_directs]
+            "routes": [self._serialize_itin(it, quota=quota) for it in scored_directs]
         }
 
         # Step 2: Search connecting hubs and lifehacks
@@ -617,10 +637,28 @@ class PublicSearchEngine:
             "total_evaluated": len(ranked),
             "confirmed_count": confirmed_count,
             "lowest_fare": lowest_fare,
-            "routes": [self._serialize_itin(it) for it in ranked[:80]]
+            "routes": [self._serialize_itin(it, quota=quota) for it in ranked[:80]]
         }
 
-    def _serialize_itin(self, it: CleanItinerary) -> Dict[str, Any]:
+    def _serialize_itin(self, it: CleanItinerary, quota: str = "GN") -> Dict[str, Any]:
+        first_leg = it.legs[0] if it.legs else None
+        last_leg = it.legs[-1] if it.legs else None
+
+        primary_cat = "SUPERFAST"
+        if first_leg:
+            primary_cat = classify_train(first_leg.train_number, first_leg.train_name).get("category", "SUPERFAST")
+
+        irctc_link = it.irctc_link
+        if not irctc_link and first_leg and last_leg:
+            irctc_link = generate_irctc_link(
+                train_no=first_leg.train_number,
+                doj=first_leg.dep_datetime.strftime("%d-%m-%Y"),
+                src=first_leg.from_station,
+                dest=last_leg.to_station,
+                cls=it.best_fare_class if it.best_fare_class and it.best_fare_class != "None" else "3A",
+                quota=quota
+            )
+
         return {
             "id": it.itinerary_id,
             "rank": it.recommendation_rank,
@@ -647,20 +685,13 @@ class PublicSearchEngine:
             "fares_by_class": it.fares_by_class,
             "booking_confidence": it.booking_confidence,
             "summary": it.status_summary,
-            "primary_category": classify_train(it.legs[0].train_number, it.legs[0].train_name)["category"],
+            "primary_category": primary_cat,
             "lifehack_type": it.lifehack_type,
             "lifehack_tip": it.lifehack_tip,
             "booking_origin": it.booking_origin,
             "boarding_station": it.boarding_station,
             "split_station": it.split_station,
-            "irctc_link": it.irctc_link or generate_irctc_link(
-                train_no=it.legs[0].train_number,
-                doj=it.legs[0].dep_datetime.strftime("%d-%m-%Y"),
-                src=it.legs[0].from_station,
-                dest=it.legs[-1].to_station,
-                cls=it.best_fare_class if it.best_fare_class != "None" else "3A",
-                quota="GN"
-            ),
+            "irctc_link": irctc_link,
             "legs": [
                 {
                     "train_no": l.train_number,

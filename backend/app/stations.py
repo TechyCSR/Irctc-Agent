@@ -173,24 +173,25 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return 2.0 * R * math.asin(math.sqrt(a))
 
 
-def search_stations(query: str, limit: int = 10) -> List[Dict[str, any]]:
+def search_stations(query: str, limit: int = 12) -> List[Dict[str, any]]:
     """
     Lightning-fast autocomplete search across all 8,566 stations.
+    Prioritizes exact station codes, major junction hubs, and metro clusters.
     """
     q = query.strip().upper()
     if not q:
         return []
 
-    exact_matches = []
-    prefix_code_matches = []
-    name_matches = []
-    city_matches = []
+    exact_matches: List[Station] = []
+    prefix_code_matches: List[Station] = []
+    name_matches: List[Station] = []
+    city_matches: List[Station] = []
 
     # Check exact code first
     if q in STATIONS_BY_CODE:
         exact_matches.append(STATIONS_BY_CODE[q])
 
-    # Search in prefix index or scan
+    # Search in dataset
     for s in STATIONS_DATA:
         if s.code == q:
             continue
@@ -205,8 +206,13 @@ def search_stations(query: str, limit: int = 10) -> List[Dict[str, any]]:
         elif q in city_upper:
             city_matches.append(s)
 
-        if len(exact_matches) + len(prefix_code_matches) + len(name_matches) >= limit * 2:
+        if len(exact_matches) + len(prefix_code_matches) + len(name_matches) + len(city_matches) >= limit * 4:
             break
+
+    # Prioritize major junction hubs and clusters within each group
+    prefix_code_matches.sort(key=lambda s: (not s.is_major_junction, not bool(s.cluster_id), s.code))
+    name_matches.sort(key=lambda s: (not s.is_major_junction, not bool(s.cluster_id), len(s.name)))
+    city_matches.sort(key=lambda s: (not s.is_major_junction, not bool(s.cluster_id), len(s.city)))
 
     combined = exact_matches + prefix_code_matches + name_matches + city_matches
     seen = set()

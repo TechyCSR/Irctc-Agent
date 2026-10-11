@@ -141,8 +141,8 @@ def classify_train(train_no: str, train_name: str) -> Dict[str, str]:
     """
     Classifies an Indian Railways train into its category based on name and number patterns.
     """
-    name_upper = train_name.upper()
-    tno_clean = "".join(filter(str.isdigit, train_no))
+    name_upper = str(train_name or "").upper()
+    tno_clean = "".join(filter(str.isdigit, str(train_no or "")))
 
     if "VANDE BHARAT" in name_upper or "VB EXP" in name_upper or "VANDE" in name_upper:
         return {
@@ -218,7 +218,7 @@ def classify_train(train_no: str, train_name: str) -> Dict[str, str]:
         }
 
 
-def calculate_fare_breakdown(total_fare: int, travel_class: str) -> Dict[str, Any]:
+def calculate_fare_breakdown(total_fare: int, travel_class: Optional[str] = "3A") -> Dict[str, Any]:
     """
     Reverse-engineers official IRCTC fare breakdown formula:
     - Base Fare
@@ -227,7 +227,7 @@ def calculate_fare_breakdown(total_fare: int, travel_class: str) -> Dict[str, An
     - Dynamic Fare / Tatkal Surge: Remainder
     - GST: 5% on AC classes, 0% on Sleeper/2S
     """
-    cls_upper = travel_class.upper().strip()
+    cls_upper = str(travel_class or "3A").upper().strip()
 
     # Reservation charges
     res_charges = {
