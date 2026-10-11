@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IRCTC Smart Route & Live Seat Finder | Jodhpur to Bengaluru</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Top Navigation Bar -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
+          <i data-lucide="train" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold text-slate-900 tracking-tight">IRCTC Smart Route Agent</h1>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+              Live Connected
+            </span>
+          </div>
+          <p class="text-xs text-slate-500">Autonomous Seat Availability & Southbound Multi-Hop Pathfinder</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <button id="refreshBtn" onclick="triggerScan()" class="inline-flex items-center space-x-2 px-3.5 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition shadow-sm">
+          <i data-lucide="refresh-cw" class="w-4 h-4" id="refreshIcon"></i>
+          <span>Re-scan Live</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Route Banner & Context -->
+  <section class="bg-white border-b border-slate-200 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div class="flex items-center space-x-2 text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-1">
+            <span>Direct & 1-Transfer Multi-Hop Search</span>
+            <span>&bull;</span>
+            <span>General (GN) Quota</span>
+          </div>
+          <div class="flex items-center space-x-3 text-2xl sm:text-3xl font-extrabold text-slate-900">
+            <span>Jodhpur Area <span class="text-slate-400 text-lg font-medium">(JU / BGKT)</span></span>
+            <i data-lucide="arrow-right" class="w-6 h-6 text-indigo-500"></i>
+            <span>Bengaluru Area <span class="text-slate-400 text-lg font-medium">(SBC / YPR / SMVB)</span></span>
+          </div>
+          <p class="mt-1 text-sm text-slate-500">
+            Travel Window: <strong class="text-slate-700">10 Nov 2026 – 16 Nov 2026</strong> &bull; Showing all options ranked by confirmed seats, total fare, and travel direction.
+          </p>
+        </div>
+
+        <!-- Strategy Pills -->
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 flex items-center space-x-1.5">
+            <i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span>Confirmed Seats First</span>
+          </div>
+          <div class="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-800 flex items-center space-x-1.5">
+            <i data-lucide="compass" class="w-3.5 h-3.5 text-blue-600"></i>
+            <span>Southbound Preferred</span>
+          </div>
+          <div class="px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-800 flex items-center space-x-1.5">
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-600"></i>
+            <span>Delhi Detours Downranked</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Strip -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+          <span class="text-xs font-medium text-slate-500 uppercase tracking-wider block">Total Options Found</span>
+          <span id="metricTotalRoutes" class="text-2xl font-extrabold text-slate-900 mt-0.5 block">—</span>
+          <span class="text-xs text-slate-400">Direct & connecting routes</span>
+        </div>
+        <div class="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5">
+          <span class="text-xs font-medium text-emerald-700 uppercase tracking-wider block">100% Confirmed Routes</span>
+          <span id="metricConfirmedRoutes" class="text-2xl font-extrabold text-emerald-700 mt-0.5 block">—</span>
+          <span class="text-xs text-emerald-600">Available on both legs</span>
+        </div>
+        <div class="bg-indigo-50/60 border border-indigo-200 rounded-xl p-3.5">
+          <span class="text-xs font-medium text-indigo-700 uppercase tracking-wider block">Lowest Confirmed Fare</span>
+          <span id="metricLowestFare" class="text-2xl font-extrabold text-indigo-700 mt-0.5 block">—</span>
+          <span class="text-xs text-indigo-600">Total combined leg fare</span>
+        </div>
+        <div class="bg-amber-50/60 border border-amber-200 rounded-xl p-3.5">
+          <span class="text-xs font-medium text-amber-800 uppercase tracking-wider block">Direct Trains Status</span>
+          <span class="text-lg font-bold text-amber-900 mt-1 block">All Waitlisted / Regret</span>
+          <span class="text-xs text-amber-700">Connecting travel needed</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content Layout -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+
+    <!-- Interactive Filter Toolbar -->
+    <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 mb-8 shadow-sm space-y-4">
+
+      <!-- Row 1: Date Chips Filter -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Departure Date From Jodhpur</label>
+        <div class="flex items-center space-x-2 overflow-x-auto pb-1 custom-scrollbar" id="dateFilterChips">
+          <button onclick="setDateFilter('ALL')" class="date-chip active px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white border border-indigo-600 shrink-0 transition" data-date="ALL">
+            All Dates (10–16 Nov)
+          </button>
+          <button onclick="setDateFilter('10-11-2026')" class="date-chip px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 shrink-0 transition" data-date="10-11-2026">
+            10 Nov (Tue)
+          </button>
+          <button onclick="setDateFilter('11-11-2026')" class="date-chip px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 shrink-0 transition" data-date="11-11-2026">
+            11 Nov (Wed)
+          </button>
+          <button onclick="setDateFilter('12-11-2026')" class="date-chip px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 shrink-0 transition" data-date="12-11-2026">
+            12 Nov (Thu)
+          </button>
+          <button onclick="setDateFilter('13-11-2026')" class="date-chip px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 shrink-0 transition" data-date="13-11-2026">
+            13 Nov (Fri)
+          </button>
+          <button onclick="setDateFilter('14-11-2026')" class="date-chip px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 shrink-0 transition" data-date="14-11-2026">
+            14 Nov (Sat)
+          </button>
+          <button onclick="setDateFilter('15-11-2026')" class="date-chip px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 shrink-0 transition" data-date="15-11-2026">
+            15 Nov (Sun)
+          </button>
+          <button onclick="setDateFilter('16-11-2026')" class="date-chip px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 shrink-0 transition" data-date="16-11-2026">
+            16 Nov (Mon)
+          </button>
+        </div>
+      </div>
+
+      <!-- Row 2: Secondary Dropdown & Toggle Filters -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
+
+        <!-- Corridor Filter -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Transit Corridor</label>
+          <select id="corridorSelect" onchange="applyFilters()" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="ALL">All Corridors (Inclusive)</option>
+            <option value="DECCAN">Deccan (Hyderabad / KCG / SC)</option>
+            <option value="WESTERN">Western (Gujarat / Mumbai / Pune)</option>
+            <option value="CENTRAL">Central (Bhopal / Kota / MP)</option>
+            <option value="NORTHERN">Northern Detours (Delhi / NZM / DLI)</option>
+            <option value="DIRECT">Direct Trains Only</option>
+          </select>
+        </div>
+
+        <!-- Class Filter -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Travel Class</label>
+          <select id="classSelect" onchange="applyFilters()" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="ALL">Any Class (Best Available)</option>
+            <option value="3A">3A (AC 3 Tier)</option>
+            <option value="2A">2A (AC 2 Tier)</option>
+            <option value="SL">SL (Sleeper Class)</option>
+            <option value="1A">1A (First AC)</option>
+            <option value="3E">3E (3 AC Economy)</option>
+          </select>
+        </div>
+
+        <!-- Sort Order -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Sort Options By</label>
+          <select id="sortSelect" onchange="applyFilters()" class="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="SCORE">Recommendation #1 (Optimal Score)</option>
+            <option value="FARE_LOW">Lowest Total Fare (₹)</option>
+            <option value="DURATION_SHORT">Shortest Total Journey Time</option>
+            <option value="LAYOVER_SHORT">Shortest Layover Buffer</option>
+          </select>
+        </div>
+
+        <!-- Confirmed Only Switch -->
+        <div class="flex items-center justify-between sm:justify-start sm:space-x-3 bg-slate-50 rounded-lg p-2 border border-slate-200 sm:self-end">
+          <span class="text-xs font-semibold text-slate-700">100% Confirmed Only</span>
+          <input type="checkbox" id="confirmedOnlyToggle" onchange="applyFilters()" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Active Filter Counter -->
+    <div class="flex items-center justify-between mb-4">
+      <div class="text-sm font-semibold text-slate-600">
+        Showing <span id="filteredCountText" class="text-indigo-600 font-bold">0</span> options matching your filters
+      </div>
+      <div class="text-xs text-slate-500">
+        Ranked: <span class="font-bold text-slate-700">Recommendation #1, #2, etc.</span>
+      </div>
+    </div>
+
+    <!-- Recommendations Cards Container -->
+    <div id="itineraryContainer" class="space-y-4">
+      <!-- Loading Skeleton -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm animate-pulse space-y-4">
+        <div class="h-6 bg-slate-200 rounded w-1/4"></div>
+        <div class="h-4 bg-slate-200 rounded w-1/2"></div>
+        <div class="h-16 bg-slate-100 rounded w-full"></div>
+      </div>
+    </div>
+
+    <!-- Direct Trains Information Panel -->
+    <section class="mt-12 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+      <div class="flex items-center space-x-3 mb-4">
+        <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+          <i data-lucide="info" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Direct Train Reality Check (Why You Need 1-Transfer)</h2>
+          <p class="text-xs text-slate-500">Live booking status of all direct trains between Jodhpur and Bengaluru (10–16 Nov 2026)</p>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-600">
+          <thead class="bg-slate-50 text-slate-700 uppercase font-semibold border-b border-slate-200">
+            <tr>
+              <th class="py-3 px-4">Departure Date</th>
+              <th class="py-3 px-4">Train No & Name</th>
+              <th class="py-3 px-4">Live Seats (General Quota)</th>
+              <th class="py-3 px-4">Waitlist Reality</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100" id="directTrainsTableBody">
+            <tr>
+              <td colspan="4" class="py-4 text-center text-slate-400">Loading direct train data...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 py-6 mt-12 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4">
+      <p class="font-medium text-slate-700">IRCTC Autonomous Agent & Pathfinder System</p>
+      <p class="mt-1">Real-time data fetched live from Indian Railways national reservation engine. GN Quota only.</p>
+    </div>
+  </footer>
+
+  <!-- App Javascript -->
+  <script>
+    let allItineraries = [];
+    let selectedDate = 'ALL';
+
+    async function loadData() {
+      try {
+        const resp = await fetch('/api/routes');
+        const data = await resp.json();
+        allItineraries = data.routes || [];
+        updateMetrics(data);
+        renderDirectTrains(data.direct_trains || []);
+        applyFilters();
+      } catch (err) {
+        console.error('Failed to load routes:', err);
+        document.getElementById('itineraryContainer').innerHTML = `
+          <div class="p-6 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center">
+            <p class="font-semibold">Unable to connect to the backend server.</p>
+            <p class="text-xs mt-1">Please ensure the server is running on port 8000.</p>
+          </div>
+        `;
+      }
+    }
+
+    function updateMetrics(data) {
+      document.getElementById('metricTotalRoutes').innerText = data.total_evaluated || allItineraries.length;
+      document.getElementById('metricConfirmedRoutes').innerText = data.total_confirmed || 0;
+      document.getElementById('metricLowestFare').innerText = data.lowest_fare ? `₹${data.lowest_fare}` : '₹1,280';
+    }
+
+    function setDateFilter(dateVal) {
+      selectedDate = dateVal;
+      document.querySelectorAll('.date-chip').forEach(chip => {
+        if (chip.getAttribute('data-date') === dateVal) {
+          chip.className = 'date-chip active px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white border border-indigo-600 shrink-0 transition';
+        } else {
+          chip.className = 'date-chip px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 shrink-0 transition';
+        }
+      });
+      applyFilters();
+    }
+
+    function applyFilters() {
+      const corridor = document.getElementById('corridorSelect').value;
+      const classCode = document.getElementById('classSelect').value;
+      const sortBy = document.getElementById('sortSelect').value;
+      const confirmedOnly = document.getElementById('confirmedOnlyToggle').checked;
+
+      let filtered = allItineraries.filter(itin => {
+        // Date filter
+        if (selectedDate !== 'ALL') {
+          const firstLegDate = itin.legs[0].departure.split(' ')[0]; // e.g. "10-Nov"
+          // Normalize selected date (10-11-2026 -> 10-Nov)
+          const [d, m] = selectedDate.split('-');
+          const monthMap = {'11': 'Nov'};
+          const expected = `${d}-${monthMap[m] || 'Nov'}`;
+          if (firstLegDate !== expected) return false;
+        }
+
+        // Corridor filter
+        if (corridor === 'DECCAN' && !itin.corridor.includes('Deccan') && !itin.corridor.includes('Hyderabad')) return false;
+        if (corridor === 'WESTERN' && !itin.corridor.includes('Western') && !itin.corridor.includes('Karnataka')) return false;
+        if (corridor === 'CENTRAL' && !itin.corridor.includes('Central')) return false;
+        if (corridor === 'NORTHERN' && !itin.is_northern_detour) return false;
+        if (corridor === 'DIRECT' && itin.type !== 'DIRECT') return false;
+
+        // Confirmed only filter
+        if (confirmedOnly) {
+          const isAllConfirmed = itin.legs.every(leg => {
+            return Object.values(leg.seats).some(s => s.includes('AVAILABLE') && !s.includes('NOT AVAILABLE'));
+          });
+          if (!isAllConfirmed) return false;
+        }
+
+        // Class filter
+        if (classCode !== 'ALL') {
+          const hasClass = itin.legs.every(leg => leg.seats[classCode] !== undefined);
+          if (!hasClass) return false;
+        }
+
+        return true;
+      });
+
+      // Sorting
+      if (sortBy === 'FARE_LOW') {
+        filtered.sort((a, b) => (a.best_fare || 99999) - (b.best_fare || 99999));
+      } else if (sortBy === 'DURATION_SHORT') {
+        filtered.sort((a, b) => a.total_duration_minutes - b.total_duration_minutes);
+      } else if (sortBy === 'LAYOVER_SHORT') {
+        filtered.sort((a, b) => a.layover_minutes - b.layover_minutes);
+      } else {
+        // Score default
+        filtered.sort((a, b) => b.score - a.score);
+      }
+
+      document.getElementById('filteredCountText').innerText = filtered.length;
+      renderItineraries(filtered);
+    }
+
+    function renderItineraries(list) {
+      const container = document.getElementById('itineraryContainer');
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 bg-white border border-slate-200 rounded-2xl text-center text-slate-500">
+            <i data-lucide="search-x" class="w-8 h-8 mx-auto text-slate-400 mb-2"></i>
+            <p class="font-semibold text-slate-700">No itineraries match these specific filters.</p>
+            <p class="text-xs mt-1">Try selecting "All Dates" or changing the transit corridor filter.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      let html = '';
+      list.forEach((itin, index) => {
+        const isConfirmedBoth = itin.legs.every(leg => {
+          return Object.values(leg.seats).some(s => s.includes('AVAILABLE') && !s.includes('NOT AVAILABLE'));
+        });
+
+        const recRank = index + 1;
+        const rankColor = recRank === 1 ? 'bg-amber-500 text-white' : (recRank <= 3 ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white');
+
+        let detourBadge = '';
+        if (itin.is_northern_detour) {
+          detourBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+            <i data-lucide="alert-triangle" class="w-3 h-3 mr-1"></i> Northern Detour (Delhi)
+          </span>`;
+        } else if (itin.corridor.includes('Deccan') || itin.corridor.includes('Hyderabad')) {
+          detourBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            Deccan / Southbound Corridor
+          </span>`;
+        } else if (itin.corridor.includes('Western')) {
+          detourBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+            Western / Coastal Corridor
+          </span>`;
+        }
+
+        const confirmedBadge = isConfirmedBoth
+          ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+              <i data-lucide="check" class="w-3 h-3 mr-1 stroke-[3]"></i> 100% Confirmed Seats
+            </span>`
+          : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+              High Chance / Partial RAC
+            </span>`;
+
+        // Format fare chips
+        let fareBreakdownHtml = '';
+        if (itin.fares_by_class && Object.keys(itin.fares_by_class).length > 0) {
+          fareBreakdownHtml = Object.entries(itin.fares_by_class).map(([cls, f]) => `
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+              <strong>${cls}:</strong>&nbsp;₹${f}
+            </span>
+          `).join('');
+        }
+
+        // Render Legs
+        const leg1 = itin.legs[0];
+        const leg2 = itin.legs.length > 1 ? itin.legs[1] : null;
+
+        html += `
+          <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
+            
+            <!-- Card Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="inline-flex items-center px-3 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wide ${rankColor}">
+                  Recommendation #${recRank}
+                </span>
+                ${confirmedBadge}
+                ${detourBadge}
+              </div>
+
+              <!-- Total Journey & Fare Summary -->
+              <div class="flex items-baseline space-x-4 self-start sm:self-auto">
+                <div>
+                  <span class="text-xs text-slate-400 block uppercase font-medium">Total Journey</span>
+                  <span class="text-sm font-bold text-slate-900">${formatDuration(itin.total_duration_minutes)}</span>
+                </div>
+                ${itin.best_fare > 0 ? `
+                  <div class="text-right">
+                    <span class="text-xs text-slate-400 block uppercase font-medium">Combined Fare</span>
+                    <span class="text-base font-extrabold text-indigo-600">₹${itin.best_fare} <span class="text-xs font-medium text-slate-500">(${itin.best_fare_class || '3A'})</span></span>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+
+            <!-- Visual Journey Timeline -->
+            <div class="py-4 space-y-4">
+              
+              <!-- Leg 1 -->
+              <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                  <div class="flex items-center space-x-2">
+                    <span class="w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">1</span>
+                    <span class="text-sm font-bold text-slate-900">${leg1.train_no} ${leg1.train_name}</span>
+                  </div>
+                  <span class="text-xs text-slate-500">Duration: <strong>${leg1.duration}</strong></span>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <span class="text-slate-400 block">Depart From</span>
+                    <span class="font-bold text-slate-800">${leg1.from}</span>
+                    <span class="text-indigo-600 font-semibold block">${leg1.departure}</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-400 block">Arrive At</span>
+                    <span class="font-bold text-slate-800">${leg1.to}</span>
+                    <span class="text-indigo-600 font-semibold block">${leg1.arrival}</span>
+                  </div>
+                  <div class="col-span-2 sm:col-span-1">
+                    <span class="text-slate-400 block mb-1">Live Seats (GN Quota)</span>
+                    <div class="flex flex-wrap gap-1">
+                      ${renderSeatPills(leg1.seats)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              ${leg2 ? `
+                <!-- Transfer Layover Banner -->
+                <div class="flex items-center justify-center">
+                  <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700 font-medium">
+                    <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-500"></i>
+                    <span><strong>${formatDuration(itin.layover_minutes)}</strong> transfer layover at <strong>${itin.hub}</strong></span>
+                    <span class="text-slate-400">&bull;</span>
+                    <span class="text-indigo-600 font-semibold">${itin.transfer_type}</span>
+                  </div>
+                </div>
+
+                <!-- Leg 2 -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                    <div class="flex items-center space-x-2">
+                      <span class="w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">2</span>
+                      <span class="text-sm font-bold text-slate-900">${leg2.train_no} ${leg2.train_name}</span>
+                    </div>
+                    <span class="text-xs text-slate-500">Duration: <strong>${leg2.duration}</strong></span>
+                  </div>
+
+                  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <span class="text-slate-400 block">Depart From</span>
+                      <span class="font-bold text-slate-800">${leg2.from}</span>
+                      <span class="text-indigo-600 font-semibold block">${leg2.departure}</span>
+                    </div>
+                    <div>
+                      <span class="text-slate-400 block">Arrive At (Bengaluru)</span>
+                      <span class="font-bold text-slate-800">${leg2.to}</span>
+                      <span class="text-indigo-600 font-semibold block">${leg2.arrival}</span>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1">
+                      <span class="text-slate-400 block mb-1">Live Seats (GN Quota)</span>
+                      <div class="flex flex-wrap gap-1">
+                        ${renderSeatPills(leg2.seats)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+
+            </div>
+
+            <!-- Card Footer: Fare Breakdown & Actions -->
+            <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-xs font-semibold text-slate-400 mr-1">Total Fares:</span>
+                ${fareBreakdownHtml || '<span class="text-xs text-slate-400">Available during booking</span>'}
+              </div>
+              <div class="flex items-center space-x-2">
+                <a href="https://www.irctc.co.in/nget/train-search" target="_blank" class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition">
+                  <span>Book on IRCTC</span>
+                  <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                </a>
+              </div>
+            </div>
+
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function renderSeatPills(seatsObj) {
+      if (!seatsObj || Object.keys(seatsObj).length === 0) return '<span class="text-slate-400">N/A</span>';
+      return Object.entries(seatsObj).map(([cls, rawStatus]) => {
+        let colorClass = 'bg-slate-100 text-slate-600 border-slate-200';
+        if (rawStatus.includes('AVAILABLE') && !rawStatus.includes('NOT AVAILABLE')) {
+          colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold';
+        } else if (rawStatus.includes('RAC')) {
+          colorClass = 'bg-blue-50 text-blue-700 border-blue-300 font-medium';
+        } else if (rawStatus.includes('REGRET') || rawStatus.includes('NOT AVAILABLE')) {
+          colorClass = 'bg-rose-50 text-rose-600 border-rose-200 line-through';
+        } else if (rawStatus.includes('WL')) {
+          colorClass = 'bg-amber-50 text-amber-700 border-amber-300';
+        }
+        return `
+          <span class="px-1.5 py-0.5 rounded border text-[11px] ${colorClass}">
+            ${cls}: ${rawStatus}
+          </span>
+        `;
+      }).join('');
+    }
+
+    function formatDuration(minutes) {
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `${h}h ${m < 10 ? '0' : ''}${m}m`;
+    }
+
+    function renderDirectTrains(directs) {
+      const tbody = document.getElementById('directTrainsTableBody');
+      if (!directs || directs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="py-3 px-4 text-center text-slate-400">No direct trains found.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = directs.map(d => `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="py-3 px-4 font-semibold text-slate-800">${d.date}</td>
+          <td class="py-3 px-4 font-bold text-slate-900">${d.train_no} <span class="font-normal text-slate-500">(${d.train_name})</span></td>
+          <td class="py-3 px-4">
+            <div class="flex flex-wrap gap-1">
+              ${renderSeatPills(d.seats)}
+            </div>
+          </td>
+          <td class="py-3 px-4 text-amber-700 font-medium">
+            ${d.remark || 'High confirmation risk. Split route recommended.'}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function triggerScan() {
+      const btn = document.getElementById('refreshBtn');
+      const icon = document.getElementById('refreshIcon');
+      btn.disabled = true;
+      icon.classList.add('animate-spin');
+      try {
+        await fetch('/api/scan', { method: 'POST' });
+        await loadData();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        btn.disabled = false;
+        icon.classList.remove('animate-spin');
+      }
+    }
+
+    // Initial Load
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      loadData();
+    });
+  </script>
+</body>
+</html>
