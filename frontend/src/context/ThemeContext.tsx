@@ -14,15 +14,19 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('irctc_theme');
     if (saved === 'dark' || saved === 'light') return saved;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    // Default to white (light) mode as requested
+    return 'light';
   });
 
   useEffect(() => {
     const root = document.documentElement;
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (theme === 'dark') {
       root.classList.add('dark');
+      if (metaTheme) metaTheme.setAttribute('content', '#09090b');
     } else {
       root.classList.remove('dark');
+      if (metaTheme) metaTheme.setAttribute('content', '#ffffff');
     }
     localStorage.setItem('irctc_theme', theme);
   }, [theme]);
