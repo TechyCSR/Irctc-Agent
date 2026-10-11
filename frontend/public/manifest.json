@@ -1,0 +1,19 @@
+{
+  "name": "IRCTC AGENT — Confirmed Seat Discovery & Smart Pathfinder",
+  "short_name": "IRCTC AGENT",
+  "description": "Production Indian Railways Route & Live Seat Finder with intelligent 1-transfer corridor optimization, same-train split ticketing, and guaranteed seat availability.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["travel", "navigation", "utilities"]
+}
