@@ -1,460 +1,772 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Train,
   ArrowRightLeft,
   Search,
-  ShieldCheck,
   AlertCircle,
-  RefreshCw,
-  Zap
+  ArrowUpDown,
+  History,
+  Info,
+  ExternalLink,
+  Compass,
+  X
 } from 'lucide-react';
 import { StationInput } from './components/StationInput';
 import { ItineraryCard } from './components/ItineraryCard';
+import { AmbientRouteCanvas } from './components/AmbientRouteCanvas';
+import { ToastProvider, useToast } from './components/Toast';
+import { searchRoutesREST } from './services/api';
 import type { RouteItinerary, StationItem } from './types';
 
-export const App: React.FC = () => {
+interface RecentSearchItem {
+  from: StationItem;
+  to: StationItem;
+  date: string;
+}
+
+const POPULAR_PAIRS = [
+  { from: { code: 'NDLS', name: 'New Delhi', city: 'Delhi', state: 'Delhi' }, to: { code: 'CSMT', name: 'Mumbai CSMT', city: 'Mumbai', state: 'Maharashtra' } },
+  { from: { code: 'JU', name: 'Jodhpur Jn', city: 'Jodhpur', state: 'Rajasthan' }, to: { code: 'SBC', name: 'KSR Bengaluru', city: 'Bengaluru', state: 'Karnataka' } },
+  { from: { code: 'MAS', name: 'Chennai Central', city: 'Chennai', state: 'Tamil Nadu' }, to: { code: 'SBC', name: 'KSR Bengaluru', city: 'Bengaluru', state: 'Karnataka' } },
+  { from: { code: 'HWH', name: 'Howrah Jn', city: 'Kolkata', state: 'West Bengal' }, to: { code: 'NDLS', name: 'New Delhi', city: 'Delhi', state: 'Delhi' } },
+  { from: { code: 'ADI', name: 'Ahmedabad Jn', city: 'Ahmedabad', state: 'Gujarat' }, to: { code: 'PUNE', name: 'Pune Jn', city: 'Pune', state: 'Maharashtra' } },
+];
+
+function getTomorrowDateStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split('T')[0];
+}
+
+function formatDateToDDMMYYYY(isoDate: string): string {
+  const parts = isoDate.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return isoDate;
+}
+
+const MainApp: React.FC = () => {
+  const { showToast } = useToast();
+
   // Search parameters
-  const [fromStation, setFromStation] = useState<StationItem | null>({
-    code: 'JU',
-    name: 'Jodhpur Junction',
-    city: 'Jodhpur',
-    state: 'Rajasthan',
-    cluster: 'JODHPUR'
-  });
-
-  const [toStation, setToStation] = useState<StationItem | null>({
-    code: 'SBC',
-    name: 'KSR Bengaluru City Junction',
-    city: 'Bengaluru',
-    state: 'Karnataka',
-    cluster: 'BENGALURU'
-  });
-
-  const [journeyDate, setJourneyDate] = useState('2026-11-11');
+  const [fromStation, setFromStation] = useState<StationItem | null>(null);
+  const [toStation, setToStation] = useState<StationItem | null>(null);
+  const [journeyDate, setJourneyDate] = useState<string>(getTomorrowDateStr());
   const [quota, setQuota] = useState('GN');
 
-  // Results & status
+  // Search state & results
   const [routes, setRoutes] = useState<RouteItinerary[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [searchProgressText, setSearchProgressText] = useState('');
+  const [searchStatusText, setSearchStatusText] = useState('');
   const [totalEvaluated, setTotalEvaluated] = useState(0);
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [lowestFare, setLowestFare] = useState(0);
+  const [hasSearched, setHasSearched] = useState(false);
 
-  // Filters
+  // Filters & sorting
   const [activeTab, setActiveTab] = useState<'ALL' | 'CONFIRMED' | 'DIRECT'>('ALL');
   const [classFilter, setClassFilter] = useState('ALL');
-  const [corridorFilter, setCorridorFilter] = useState('ALL');
-  const [sortBy, setSortBy] = useState('SCORE');
-  const [queryFilter, setQueryFilter] = useState('');
+  const [hubFilter, setHubFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState<'SCORE' | 'DURATION' | 'FARE' | 'DEPARTURE'>('SCORE');
+  const [textFilter, setTextFilter] = useState('');
 
-  // Swap stations
+  // UI state
+  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<RecentSearchItem[]>([]);
+
+  // Load recent searches from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('irctc_agent_recent_searches');
+      if (stored) {
+        setRecentSearches(JSON.parse(stored).slice(0, 5));
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  // Save recent search
+  const saveRecentSearch = (from: StationItem, to: StationItem, date: string) => {
+    try {
+      const updated = [
+        { from, to, date },
+        ...recentSearches.filter(
+          (s) => !(s.from.code === from.code && s.to.code === to.code)
+        ),
+      ].slice(0, 5);
+      setRecentSearches(updated);
+      localStorage.setItem('irctc_agent_recent_searches', JSON.stringify(updated));
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  // Swap Stations
   const handleSwap = () => {
     const temp = fromStation;
     setFromStation(toStation);
     setToStation(temp);
   };
 
-  // Perform search
+  // Execute Search
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!fromStation || !toStation) return;
+    if (!fromStation || !toStation) {
+      showToast('Please select both Origin and Destination stations', 'error');
+      return;
+    }
+    if (fromStation.code === toStation.code) {
+      showToast('Origin and Destination stations cannot be identical', 'error');
+      return;
+    }
 
     setIsSearching(true);
-    setSearchProgressText('Connecting to Indian Railways reservation engine...');
+    setSearchStatusText('Scanning 8,566 stations network & querying live IRCTC availability...');
     setRoutes([]);
+    setHasSearched(true);
 
-    // Format date from YYYY-MM-DD to DD-MM-YYYY
-    const [y, m, d] = journeyDate.split('-');
-    const formattedDate = `${d}-${m}-${y}`;
+    const formattedDate = formatDateToDDMMYYYY(journeyDate);
 
     try {
-      const url = `/api/search?from=${fromStation.code}&to=${toStation.code}&date=${formattedDate}&quota=${quota}`;
-      setSearchProgressText('Fetching direct trains & scanning optimal junction hubs...');
-      const resp = await fetch(url);
-      const data = await resp.json();
+      saveRecentSearch(fromStation, toStation, journeyDate);
+      setSearchStatusText(`Evaluating direct lines & intermediate corridor hubs...`);
 
-      if (data.status === 'success') {
-        setRoutes(data.routes || []);
-        setTotalEvaluated(data.total_evaluated || 0);
-        setConfirmedCount(data.total_confirmed || 0);
-        setLowestFare(data.lowest_fare || 0);
+      const resp = await searchRoutesREST(
+        fromStation.code,
+        toStation.code,
+        formattedDate,
+        quota,
+        classFilter !== 'ALL' ? classFilter : undefined
+      );
+
+      if (resp.status === 'success') {
+        setRoutes(resp.routes || []);
+        setTotalEvaluated(resp.total_evaluated || 0);
+        setConfirmedCount(resp.total_confirmed || 0);
+        setLowestFare(resp.lowest_fare || 0);
+
+        if ((resp.routes || []).length > 0) {
+          showToast(
+            `Found ${resp.routes.length} options (${resp.total_confirmed} with confirmed seats)`,
+            'success'
+          );
+        } else {
+          showToast('No available trains found for this date. Try an adjacent date.', 'info');
+        }
       }
-    } catch (err) {
-      console.error('Search failed:', err);
+    } catch (err: any) {
+      console.error('Search failure:', err);
+      showToast(err.message || 'Search failed. Please try again.', 'error');
     } finally {
       setIsSearching(false);
-      setSearchProgressText('');
+      setSearchStatusText('');
     }
   };
 
-  // Initial search on mount
-  useEffect(() => {
-    handleSearch();
-  }, []);
+  // Quick preset pair selection
+  const selectPopularPair = (pair: { from: StationItem; to: StationItem }) => {
+    setFromStation(pair.from);
+    setToStation(pair.to);
+  };
 
-  // Filter & sort routes
-  const filteredRoutes = routes.filter((it) => {
-    if (activeTab === 'CONFIRMED' && it.booking_confidence !== 'CONFIRMED') return false;
-    if (activeTab === 'DIRECT' && it.type !== 'DIRECT') return false;
+  // Available intermediate hubs for filter dropdown
+  const availableHubs = useMemo(() => {
+    const hubs = new Set<string>();
+    routes.forEach((r) => {
+      if (r.type === '1_TRANSFER' && r.hub) {
+        hubs.add(r.hub);
+      }
+    });
+    return Array.from(hubs);
+  }, [routes]);
 
-    if (classFilter !== 'ALL') {
-      const hasCls = it.legs.every((l) => l.seats[classFilter] !== undefined);
-      if (!hasCls) return false;
-    }
+  // Filtered & Sorted Routes
+  const displayedRoutes = useMemo(() => {
+    let result = routes.filter((it) => {
+      // Type/Status Tab Filter
+      if (activeTab === 'CONFIRMED' && it.booking_confidence !== 'CONFIRMED') return false;
+      if (activeTab === 'DIRECT' && it.type !== 'DIRECT') return false;
 
-    if (corridorFilter === 'PRIMARY' && (it.detour_ratio > 1.25 || it.is_detour)) return false;
-    if (corridorFilter === 'DETOUR' && !it.is_detour) return false;
+      // Hub Filter
+      if (hubFilter !== 'ALL' && it.hub !== hubFilter) return false;
 
-    if (queryFilter) {
-      const q = queryFilter.toLowerCase();
-      const match =
-        it.corridor.toLowerCase().includes(q) ||
-        it.hub.toLowerCase().includes(q) ||
-        it.legs.some((l) => l.train_name.toLowerCase().includes(q) || l.train_no.includes(q));
-      if (!match) return false;
-    }
+      // Class Filter
+      if (classFilter !== 'ALL') {
+        const hasClass = it.legs.every((l) => Object.keys(l.seats).includes(classFilter));
+        if (!hasClass) return false;
+      }
 
-    return true;
-  });
+      // Text Search Filter (train number or train name)
+      if (textFilter.trim()) {
+        const q = textFilter.toLowerCase().trim();
+        const matches = it.legs.some(
+          (l) => l.train_no.toLowerCase().includes(q) || l.train_name.toLowerCase().includes(q)
+        );
+        if (!matches) return false;
+      }
 
-  if (sortBy === 'FARE_LOW') {
-    filteredRoutes.sort((a, b) => (a.best_fare || 99999) - (b.best_fare || 99999));
-  } else if (sortBy === 'DURATION_SHORT') {
-    filteredRoutes.sort((a, b) => a.total_duration_minutes - b.total_duration_minutes);
-  } else if (sortBy === 'LAYOVER_SHORT') {
-    filteredRoutes.sort((a, b) => a.layover_minutes - b.layover_minutes);
-  } else {
-    filteredRoutes.sort((a, b) => b.score - a.score);
-  }
+      return true;
+    });
 
-  // Quick popular origin chips
-  const popularPresets = [
-    { from: { code: 'NDLS', name: 'New Delhi', city: 'Delhi', state: 'Delhi', cluster: 'DELHI' }, to: { code: 'CSMT', name: 'Mumbai CSMT', city: 'Mumbai', state: 'Maharashtra', cluster: 'MUMBAI' } },
-    { from: { code: 'JU', name: 'Jodhpur Junction', city: 'Jodhpur', state: 'Rajasthan', cluster: 'JODHPUR' }, to: { code: 'SBC', name: 'KSR Bengaluru', city: 'Bengaluru', state: 'Karnataka', cluster: 'BENGALURU' } },
-    { from: { code: 'NDLS', name: 'New Delhi', city: 'Delhi', state: 'Delhi', cluster: 'DELHI' }, to: { code: 'HWH', name: 'Howrah Junction', city: 'Kolkata', state: 'West Bengal', cluster: 'KOLKATA' } },
-    { from: { code: 'MAS', name: 'Chennai Central', city: 'Chennai', state: 'Tamil Nadu', cluster: 'CHENNAI' }, to: { code: 'SBC', name: 'KSR Bengaluru', city: 'Bengaluru', state: 'Karnataka', cluster: 'BENGALURU' } },
-  ];
+    // Sort order
+    result.sort((a, b) => {
+      if (sortBy === 'SCORE') {
+        return a.rank - b.rank;
+      }
+      if (sortBy === 'DURATION') {
+        return a.total_duration_minutes - b.total_duration_minutes;
+      }
+      if (sortBy === 'FARE') {
+        const fareA = a.best_fare || 999999;
+        const fareB = b.best_fare || 999999;
+        return fareA - fareB;
+      }
+      if (sortBy === 'DEPARTURE') {
+        const depA = a.legs[0]?.departure || '99:99';
+        const depB = b.legs[0]?.departure || '99:99';
+        return depA.localeCompare(depB);
+      }
+      return 0;
+    });
+
+    return result;
+  }, [routes, activeTab, hubFilter, classFilter, textFilter, sortBy]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      {/* Top Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
-              <Train className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-base font-extrabold text-slate-900 tracking-tight">
-                  IRCTC Smart Ticket Agent
-                </span>
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
-                  Universal Search
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Autonomous Confirmed Seat Finder for any station & date across India
-              </p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col font-sans selection:bg-neutral-900 selection:text-white">
+      {/* Top Ambient Visualizer Header */}
+      <header className="relative border-b border-neutral-200 bg-white overflow-hidden">
+        {/* Three.js Ambient Particle Grid Canvas */}
+        <AmbientRouteCanvas
+          isSearching={isSearching}
+          className="absolute inset-0 w-full h-full opacity-40"
+        />
 
-          <div className="hidden sm:flex items-center space-x-2">
-            <span className="text-xs text-slate-500 font-medium">Public Global Version 2.0</span>
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-lg bg-neutral-950 text-white font-mono text-sm font-bold flex items-center justify-center">
+                  <Train className="w-4 h-4" />
+                </span>
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-black tracking-tight uppercase font-mono text-neutral-950">
+                    IRCTC AGENT
+                  </h1>
+                  <p className="text-xs font-mono text-neutral-500 uppercase tracking-wider">
+                    Confirmed Ticket Discovery & Smart 1-Transfer Pathfinder
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-neutral-200 bg-neutral-100 font-mono text-xs font-medium text-neutral-700">
+                <span className="w-2 h-2 rounded-full bg-neutral-900 animate-pulse" />
+                8,566 STATIONS INDEXED
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setIsHowItWorksOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-neutral-300 hover:border-neutral-900 text-xs font-medium text-neutral-800 transition bg-white"
+              >
+                <Info className="w-3.5 h-3.5 text-neutral-600" />
+                <span>How It Works</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Search Panel */}
-      <section className="bg-white border-b border-slate-200 pt-6 pb-8 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Main Body */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Search Control Card */}
+        <div className="bg-white border border-neutral-200 rounded-xl p-5 sm:p-6 shadow-xs">
           <form onSubmit={handleSearch} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              {/* Origin Station */}
-              <div className="md:col-span-4">
+            {/* Origin & Destination Inputs with Swap */}
+            <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-end">
+              <div className="md:col-span-5">
                 <StationInput
-                  label="From Station / City"
+                  label="From Station"
                   value={fromStation}
                   onChange={setFromStation}
-                  placeholder="e.g. Jodhpur, Delhi, Mumbai..."
+                  placeholder="e.g. NDLS, Mumbai CSMT, SBC, JU..."
                 />
               </div>
 
-              {/* Swap Button */}
-              <div className="md:col-span-1 flex items-center justify-center pb-1">
+              <div className="md:col-span-1 flex items-center justify-center pb-0.5">
                 <button
                   type="button"
                   onClick={handleSwap}
-                  className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition border border-slate-200"
-                  title="Swap stations"
+                  title="Swap Origin and Destination"
+                  className="p-2.5 rounded-lg border border-neutral-200 hover:border-neutral-900 bg-neutral-50 hover:bg-neutral-100 text-neutral-700 transition active:scale-95"
                 >
-                  <ArrowRightLeft className="w-4 h-4 text-slate-700" />
+                  <ArrowRightLeft className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Destination Station */}
-              <div className="md:col-span-4">
+              <div className="md:col-span-5">
                 <StationInput
-                  label="To Station / City"
+                  label="To Station"
                   value={toStation}
                   onChange={setToStation}
-                  placeholder="e.g. Bengaluru, Howrah, Chennai..."
+                  placeholder="e.g. SBC, Chennai, Delhi, Howrah..."
+                />
+              </div>
+            </div>
+
+            {/* Date, Quota, Class, and Submit Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+              {/* Journey Date */}
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+                  Journey Date
+                </label>
+                <input
+                  type="date"
+                  value={journeyDate}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setJourneyDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-neutral-200 rounded-lg text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 transition shadow-xs"
                 />
               </div>
 
-              {/* Date */}
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                  Journey Date
+              {/* Quota */}
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+                  Quota
                 </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={journeyDate}
-                    onChange={(e) => setJourneyDate(e.target.value)}
-                    className="w-full pl-3 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
-                  />
-                </div>
+                <select
+                  value={quota}
+                  onChange={(e) => setQuota(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-neutral-200 rounded-lg text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 transition shadow-xs"
+                >
+                  <option value="GN">General Quota (GN)</option>
+                  <option value="TQ">Tatkal Quota (TQ)</option>
+                  <option value="LD">Ladies Quota (LD)</option>
+                  <option value="SS">Lower Berth / Senior (SS)</option>
+                </select>
               </div>
 
-              {/* Search Button */}
-              <div className="md:col-span-1">
+              {/* Preferred Class */}
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+                  Preferred Class
+                </label>
+                <select
+                  value={classFilter}
+                  onChange={(e) => setClassFilter(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-neutral-200 rounded-lg text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 transition shadow-xs"
+                >
+                  <option value="ALL">All Classes</option>
+                  <option value="3A">AC 3 Tier (3A)</option>
+                  <option value="2A">AC 2 Tier (2A)</option>
+                  <option value="1A">AC 1st Class (1A)</option>
+                  <option value="3E">AC 3 Economy (3E)</option>
+                  <option value="SL">Sleeper (SL)</option>
+                  <option value="CC">AC Chair Car (CC)</option>
+                  <option value="2S">Second Sitting (2S)</option>
+                </select>
+              </div>
+
+              {/* Search Submit Button */}
+              <div className="flex items-end">
                 <button
                   type="submit"
                   disabled={isSearching}
-                  className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold rounded-xl text-sm transition shadow-sm flex items-center justify-center space-x-1.5 h-[42px]"
+                  className="w-full py-2.5 px-4 rounded-lg bg-neutral-950 hover:bg-neutral-800 disabled:bg-neutral-400 text-white font-mono text-sm font-bold flex items-center justify-center gap-2 transition shadow-xs active:scale-[0.98]"
                 >
                   {isSearching ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>SEARCHING...</span>
+                    </>
                   ) : (
                     <>
                       <Search className="w-4 h-4" />
-                      <span className="hidden md:inline">Find</span>
+                      <span>FIND CONFIRMED SEATS</span>
                     </>
                   )}
                 </button>
               </div>
             </div>
 
-            {/* Quota Selector & Popular Presets */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-slate-400 font-medium">Quick Routes:</span>
-                {popularPresets.map((p, idx) => (
+            {/* Quick Presets & Popular Hubs */}
+            <div className="pt-2 flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-[10px] font-mono uppercase text-neutral-400 font-bold mr-1">
+                Popular Routes:
+              </span>
+              {POPULAR_PAIRS.map((pair) => (
+                <button
+                  key={`${pair.from.code}-${pair.to.code}`}
+                  type="button"
+                  onClick={() => selectPopularPair(pair)}
+                  className="px-2 py-0.5 rounded border border-neutral-200 hover:border-neutral-900 bg-neutral-50 hover:bg-neutral-100 text-neutral-800 text-[11px] font-mono transition"
+                >
+                  {pair.from.code} → {pair.to.code}
+                </button>
+              ))}
+            </div>
+
+            {/* Recent Searches (if available) */}
+            {recentSearches.length > 0 && (
+              <div className="pt-1 flex flex-wrap items-center gap-1.5 text-xs border-t border-neutral-100">
+                <span className="text-[10px] font-mono uppercase text-neutral-400 font-bold mr-1 flex items-center gap-1">
+                  <History className="w-3 h-3" /> Recent:
+                </span>
+                {recentSearches.map((rec) => (
                   <button
-                    key={idx}
+                    key={`${rec.from.code}-${rec.to.code}-${rec.date}`}
                     type="button"
                     onClick={() => {
-                      setFromStation(p.from);
-                      setToStation(p.to);
+                      setFromStation(rec.from);
+                      setToStation(rec.to);
+                      setJourneyDate(rec.date);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition"
+                    className="px-2 py-0.5 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[11px] font-mono transition flex items-center gap-1"
                   >
-                    {p.from.city} → {p.to.city}
+                    <span>{rec.from.code} → {rec.to.code}</span>
+                    <span className="text-[10px] text-neutral-400">({rec.date})</span>
                   </button>
                 ))}
               </div>
+            )}
+          </form>
+        </div>
 
-              <div className="flex items-center space-x-2">
-                <span className="text-slate-400 font-medium">Quota:</span>
-                <select
-                  value={quota}
-                  onChange={(e) => setQuota(e.target.value)}
-                  className="bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 font-semibold text-slate-700 focus:outline-none"
+        {/* Real-time Search Progress Banner */}
+        {isSearching && (
+          <div className="bg-white border border-neutral-300 rounded-xl p-4 flex items-center gap-3.5 shadow-xs animate-pulse">
+            <div className="w-5 h-5 border-2 border-neutral-950 border-t-transparent rounded-full animate-spin shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-mono font-bold text-neutral-900">
+                {searchStatusText || 'Searching all railway corridors across India...'}
+              </div>
+              <div className="text-xs text-neutral-500 font-mono mt-0.5">
+                Analyzing direct trains, checking intermediate junction transfers, calculating layover safety
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Results Section */}
+        {hasSearched && (
+          <div className="space-y-4">
+            {/* Results Header Summary Bar */}
+            <div className="bg-white border border-neutral-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-neutral-400 block font-bold">
+                    Journey Corridor
+                  </span>
+                  <span className="text-sm font-mono font-bold text-neutral-950">
+                    {fromStation?.code} ({fromStation?.name}) → {toStation?.code} ({toStation?.name})
+                  </span>
+                </div>
+                <div className="h-6 w-px bg-neutral-200 hidden sm:block" />
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-neutral-400 block font-bold">
+                    Evaluated
+                  </span>
+                  <span className="text-sm font-mono font-bold text-neutral-900">
+                    {totalEvaluated} routes
+                  </span>
+                </div>
+                <div className="h-6 w-px bg-neutral-200 hidden sm:block" />
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-neutral-400 block font-bold">
+                    Confirmed Options
+                  </span>
+                  <span className="text-sm font-mono font-bold text-neutral-950">
+                    {confirmedCount} available
+                  </span>
+                </div>
+                {lowestFare > 0 && (
+                  <>
+                    <div className="h-6 w-px bg-neutral-200 hidden sm:block" />
+                    <div>
+                      <span className="text-[10px] font-mono uppercase text-neutral-400 block font-bold">
+                        Lowest Fare
+                      </span>
+                      <span className="text-sm font-mono font-bold text-neutral-950">
+                        ₹{lowestFare}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Quick Tab Filters */}
+              <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ALL')}
+                  className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                    activeTab === 'ALL'
+                      ? 'bg-neutral-950 text-white shadow-2xs'
+                      : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
                 >
-                  <option value="GN">General (GN)</option>
-                  <option value="TQ">Tatkal (TQ)</option>
-                  <option value="LD">Ladies (LD)</option>
+                  All ({routes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('CONFIRMED')}
+                  className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                    activeTab === 'CONFIRMED'
+                      ? 'bg-neutral-950 text-white shadow-2xs'
+                      : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
+                >
+                  Confirmed ({confirmedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('DIRECT')}
+                  className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                    activeTab === 'DIRECT'
+                      ? 'bg-neutral-950 text-white shadow-2xs'
+                      : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
+                >
+                  Direct Only
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Sort Controls Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Intermediate Hub Filter */}
+                {availableHubs.length > 0 && (
+                  <select
+                    value={hubFilter}
+                    onChange={(e) => setHubFilter(e.target.value)}
+                    className="px-2.5 py-1.5 bg-white border border-neutral-200 rounded-lg font-mono text-neutral-800 text-xs focus:outline-none focus:border-neutral-900"
+                  >
+                    <option value="ALL">All Transfer Hubs ({availableHubs.length})</option>
+                    {availableHubs.map((h) => (
+                      <option key={h} value={h}>
+                        Via {h}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Text Filter for Train # */}
+                <input
+                  type="text"
+                  placeholder="Filter by train name / number..."
+                  value={textFilter}
+                  onChange={(e) => setTextFilter(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-neutral-200 rounded-lg text-xs font-mono text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-900 w-52"
+                />
+              </div>
+
+              {/* Sort Dropdown */}
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <span className="text-neutral-400 font-mono text-[11px] uppercase font-bold flex items-center gap-1">
+                  <ArrowUpDown className="w-3 h-3" /> Sort:
+                </span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="px-2.5 py-1.5 bg-white border border-neutral-200 rounded-lg font-mono text-neutral-800 text-xs focus:outline-none focus:border-neutral-900"
+                >
+                  <option value="SCORE">Recommended (Best Match)</option>
+                  <option value="DURATION">Shortest Travel Time</option>
+                  <option value="FARE">Lowest Combined Fare</option>
+                  <option value="DEPARTURE">Earliest Departure</option>
                 </select>
               </div>
             </div>
-          </form>
 
-          {/* Real-time Streaming Search Progress Ticker */}
-          {isSearching && (
-            <div className="mt-4 p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl flex items-center space-x-3 text-xs text-indigo-900 animate-pulse">
-              <Zap className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>{searchProgressText}</span>
-            </div>
-          )}
-
-          {/* Metrics Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Total Options Found
-              </span>
-              <span className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 block">
-                {totalEvaluated}
-              </span>
-              <span className="text-[11px] text-slate-400">Direct & connecting</span>
-            </div>
-
-            <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5">
-              <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider block">
-                100% Confirmed Routes
-              </span>
-              <span className="text-xl sm:text-2xl font-black text-emerald-700 mt-0.5 block">
-                {confirmedCount}
-              </span>
-              <span className="text-[11px] text-emerald-600">Available on both legs</span>
-            </div>
-
-            <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-3.5">
-              <span className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider block">
-                Lowest Combined Fare
-              </span>
-              <span className="text-xl sm:text-2xl font-black text-indigo-700 mt-0.5 block">
-                {lowestFare > 0 ? `₹${lowestFare}` : '—'}
-              </span>
-              <span className="text-[11px] text-indigo-600">Total travel cost</span>
-            </div>
-
-            <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-3.5">
-              <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-wider block">
-                Smart Pathfinder
-              </span>
-              <span className="text-sm font-bold text-blue-900 mt-1 block">
-                Dynamic Hub Selection
-              </span>
-              <span className="text-[11px] text-blue-600">Minimal travel detour</span>
-            </div>
+            {/* Itinerary Cards List */}
+            {displayedRoutes.length > 0 ? (
+              <div className="space-y-4">
+                {displayedRoutes.map((itinerary) => (
+                  <ItineraryCard key={itinerary.id} itinerary={itinerary} />
+                ))}
+              </div>
+            ) : !isSearching ? (
+              <div className="bg-white border border-neutral-200 rounded-xl p-12 text-center space-y-3">
+                <AlertCircle className="w-8 h-8 text-neutral-400 mx-auto" />
+                <h3 className="text-base font-mono font-bold text-neutral-900">
+                  No matching route options found
+                </h3>
+                <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                  Try switching filters (e.g. choose "All Classes" or clear the transfer hub filter),
+                  or search for an adjacent travel date.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('ALL');
+                    setHubFilter('ALL');
+                    setClassFilter('ALL');
+                    setTextFilter('');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg border border-neutral-300 bg-white hover:bg-neutral-100 text-xs font-mono font-bold text-neutral-800 transition"
+                >
+                  Reset All Filters
+                </button>
+              </div>
+            ) : (
+              /* Loading Skeletons */
+              <div className="space-y-4">
+                {[1, 2, 3].map((n) => (
+                  <div
+                    key={n}
+                    className="bg-white border border-neutral-200 rounded-xl p-5 space-y-4 animate-pulse"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="h-6 w-32 bg-neutral-200 rounded" />
+                      <div className="h-6 w-24 bg-neutral-200 rounded" />
+                    </div>
+                    <div className="h-20 bg-neutral-100 rounded-lg" />
+                    <div className="h-10 bg-neutral-100 rounded-lg" />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      </section>
+        )}
 
-      {/* Main Results Section */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        {/* Filter and Tab Controls */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Status Tabs */}
-          <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setActiveTab('ALL')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeTab === 'ALL'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              All Options ({routes.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('CONFIRMED')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 ${
-                activeTab === 'CONFIRMED'
-                  ? 'bg-white text-emerald-700 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>100% Confirmed Only</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('DIRECT')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeTab === 'DIRECT'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Direct Trains Only
-            </button>
-          </div>
-
-          {/* Secondary Controls: Class, Corridor, Sort */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Search filter */}
-            <input
-              type="text"
-              value={queryFilter}
-              onChange={(e) => setQueryFilter(e.target.value)}
-              placeholder="Filter by train or hub..."
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none w-40"
-            />
-
-            {/* Class */}
-            <select
-              value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg p-2 font-medium text-slate-700 focus:outline-none"
-            >
-              <option value="ALL">All Classes</option>
-              <option value="3A">3A (AC 3 Tier)</option>
-              <option value="2A">2A (AC 2 Tier)</option>
-              <option value="SL">SL (Sleeper)</option>
-              <option value="1A">1A (First AC)</option>
-              <option value="3E">3E (3 AC Economy)</option>
-            </select>
-
-            {/* Corridor */}
-            <select
-              value={corridorFilter}
-              onChange={(e) => setCorridorFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg p-2 font-medium text-slate-700 focus:outline-none"
-            >
-              <option value="ALL">All Corridors (Inclusive)</option>
-              <option value="PRIMARY">Primary Corridor Only</option>
-              <option value="DETOUR">Detour Fallbacks</option>
-            </select>
-
-            {/* Sort */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg p-2 font-medium text-slate-700 focus:outline-none"
-            >
-              <option value="SCORE">Recommendation #1 (Optimal Score)</option>
-              <option value="FARE_LOW">Lowest Total Fare (₹)</option>
-              <option value="DURATION_SHORT">Shortest Total Duration</option>
-              <option value="LAYOVER_SHORT">Shortest Layover</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Results Counter */}
-        <div className="flex items-center justify-between mb-4 text-xs text-slate-500 font-medium">
-          <div>
-            Showing <strong className="text-slate-900">{filteredRoutes.length}</strong> travel combinations
-          </div>
-          <div>
-            Sorted by: <strong className="text-slate-900">Recommendation Rank</strong>
-          </div>
-        </div>
-
-        {/* Itinerary Cards Feed */}
-        <div className="space-y-4">
-          {filteredRoutes.length > 0 ? (
-            filteredRoutes.map((itin) => (
-              <ItineraryCard key={itin.id} itinerary={itin} />
-            ))
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500 shadow-xs">
-              <AlertCircle className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No matching routes found</h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                Try selecting "All Options" or searching a different date to explore available connecting routes.
+        {/* Initial Prompt State (before search) */}
+        {!hasSearched && (
+          <div className="bg-white border border-neutral-200 rounded-xl p-8 sm:p-12 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mx-auto text-neutral-800">
+              <Compass className="w-6 h-6 stroke-[1.5]" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-mono font-bold text-neutral-900 uppercase">
+                Find Confirmed Tickets Anywhere in India
+              </h2>
+              <p className="text-xs text-neutral-500 max-w-lg mx-auto mt-1">
+                When direct trains are waitlisted (WL) or closed (REGRET), IRCTC AGENT searches 1-transfer
+                corridors with guaranteed layover safety to get you a confirmed berth.
               </p>
             </div>
-          )}
-        </div>
+            <div className="pt-2">
+              <span className="text-[11px] font-mono text-neutral-400">
+                Select your origin & destination above, or pick one of the popular routes to begin.
+              </span>
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* Clean Footer */}
-      <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500 mt-auto">
-        <div className="max-w-7xl mx-auto px-4">
-          <p className="font-semibold text-slate-700">IRCTC Universal Agent & Multi-Hop Pathfinder</p>
-          <p className="mt-1">
-            Real-time data fetched live from Indian Railways national reservation engine. Public GN Quota only.
-          </p>
+      {/* "How It Works" Modal */}
+      {isHowItWorksOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-xs">
+          <div className="bg-white border border-neutral-300 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-slide-up">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded bg-neutral-950 text-white font-mono text-xs font-bold">
+                  <Info className="w-4 h-4" />
+                </span>
+                <h3 className="font-mono font-bold text-sm uppercase text-neutral-950">
+                  How IRCTC AGENT Works
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHowItWorksOpen(false)}
+                className="text-neutral-400 hover:text-neutral-700 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-neutral-600 leading-relaxed font-sans">
+              <div className="flex items-start gap-2.5">
+                <span className="font-mono font-bold text-neutral-950 bg-neutral-100 px-1.5 py-0.5 rounded text-[10px]">
+                  01
+                </span>
+                <p>
+                  <strong>Live Direct Search:</strong> Queries all direct Indian Railways trains between your
+                  origin and destination for real-time seat availability across all travel classes.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="font-mono font-bold text-neutral-950 bg-neutral-100 px-1.5 py-0.5 rounded text-[10px]">
+                  02
+                </span>
+                <p>
+                  <strong>Corridor Geometry:</strong> Uses GPS Great-Circle distance and railway network hubs to
+                  identify 4–6 optimal transfer junctions along your journey corridor (detour ratio ≤ 1.35).
+                </p>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="font-mono font-bold text-neutral-950 bg-neutral-100 px-1.5 py-0.5 rounded text-[10px]">
+                  03
+                </span>
+                <p>
+                  <strong>Layover Safety Validator:</strong> Checks departure & arrival timestamps with overnight
+                  carryover, ensuring comfortable 60–360 min transfer buffers with zero risk of missed connections.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="font-mono font-bold text-neutral-950 bg-neutral-100 px-1.5 py-0.5 rounded text-[10px]">
+                  04
+                </span>
+                <p>
+                  <strong>Canonical Deduplication:</strong> Automatically merges multi-terminal city aliases
+                  (e.g., Delhi NDLS/NZM/DLI or Bengaluru SBC/SMVB/YPR) into single clean recommendations.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-neutral-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsHowItWorksOpen(false)}
+                className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 text-white font-mono text-xs font-bold rounded-lg transition"
+              >
+                Got It
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <footer className="border-t border-neutral-200 bg-white py-6 mt-12 text-center text-xs font-mono text-neutral-500">
+        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-neutral-900">IRCTC AGENT</span>
+            <span>&bull;</span>
+            <span>Production Public Release v2.0</span>
+          </div>
+
+          <div className="flex items-center gap-4 text-neutral-600">
+            <a
+              href="https://www.irctc.co.in"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-neutral-950 transition flex items-center gap-1"
+            >
+              <span>Official IRCTC Portal</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
         </div>
       </footer>
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <ToastProvider>
+      <MainApp />
+    </ToastProvider>
   );
 };
 

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Building2 } from 'lucide-react';
+import { Search, Building2, X } from 'lucide-react';
 import type { StationItem } from '../types';
+import { searchStations } from '../services/api';
 
 interface StationInputProps {
   label: string;
   value: StationItem | null;
-  onChange: (station: StationItem) => void;
+  onChange: (station: StationItem | null) => void;
   placeholder?: string;
 }
 
@@ -13,7 +14,7 @@ export const StationInput: React.FC<StationInputProps> = ({
   label,
   value,
   onChange,
-  placeholder = 'Search station or city...'
+  placeholder = 'Search by station code, name, or city...'
 }) => {
   const [query, setQuery] = useState(value ? `${value.name} (${value.code})` : '');
   const [suggestions, setSuggestions] = useState<StationItem[]>([]);
@@ -24,6 +25,8 @@ export const StationInput: React.FC<StationInputProps> = ({
   useEffect(() => {
     if (value) {
       setQuery(`${value.name} (${value.code})`);
+    } else {
+      setQuery('');
     }
   }, [value]);
 
@@ -38,18 +41,17 @@ export const StationInput: React.FC<StationInputProps> = ({
   }, []);
 
   const fetchStations = async (text: string) => {
-    if (!text || text.length < 1) {
+    if (!text || text.trim().length < 1) {
       setSuggestions([]);
       return;
     }
     setIsLoading(true);
     try {
-      const resp = await fetch(`/api/stations/search?q=${encodeURIComponent(text)}`);
-      const data = await resp.json();
+      const data = await searchStations(text);
       setSuggestions(data || []);
       setIsOpen(true);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to search stations:', err);
     } finally {
       setIsLoading(false);
     }
@@ -58,7 +60,20 @@ export const StationInput: React.FC<StationInputProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setQuery(val);
+    if (!val) {
+      onChange(null);
+      setSuggestions([]);
+      setIsOpen(false);
+      return;
+    }
     fetchStations(val);
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    onChange(null);
+    setSuggestions([]);
+    setIsOpen(false);
   };
 
   const handleSelect = (stn: StationItem) => {
@@ -69,13 +84,22 @@ export const StationInput: React.FC<StationInputProps> = ({
 
   return (
     <div className="relative w-full" ref={wrapperRef}>
-      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-        {label}
-      </label>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
+          {label}
+        </label>
+        {value && (
+          <span className="text-[10px] font-mono text-zinc-400">
+            {value.code}
+          </span>
+        )}
+      </div>
+
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-          <MapPin className="w-4 h-4 text-indigo-500" />
+        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
+          <Search className="w-4 h-4 text-zinc-500" />
         </div>
+
         <input
           type="text"
           value={query}
@@ -85,41 +109,58 @@ export const StationInput: React.FC<StationInputProps> = ({
             else if (query) fetchStations(query);
           }}
           placeholder={placeholder}
-          className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition shadow-xs"
+          className="w-full pl-10 pr-9 py-2.5 bg-white border border-zinc-200 rounded-lg text-sm font-semibold text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-950 focus:border-zinc-950 transition-all shadow-xs"
         />
+
+        {query && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-700 transition"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+
         {isLoading && (
-          <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-            <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="absolute inset-y-0 right-8 pr-1 flex items-center">
+            <div className="w-3.5 h-3.5 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>
 
       {isOpen && suggestions.length > 0 && (
-        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100">
+        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-zinc-200 rounded-lg shadow-lg max-h-64 overflow-y-auto divide-y divide-zinc-100">
           {suggestions.map((stn) => (
             <button
               key={stn.code}
               type="button"
               onClick={() => handleSelect(stn)}
-              className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/60 transition flex items-center justify-between group"
+              className="w-full text-left px-3.5 py-2.5 hover:bg-zinc-50 transition flex items-center justify-between group"
             >
-              <div className="flex items-center space-x-2.5">
-                <span className="w-12 text-center py-1 px-1.5 bg-indigo-100/80 text-indigo-800 text-xs font-extrabold rounded-md group-hover:bg-indigo-600 group-hover:text-white transition">
+              <div className="flex items-center gap-3">
+                <span className="w-14 text-center py-1 px-1.5 bg-zinc-100 group-hover:bg-zinc-900 text-zinc-900 group-hover:text-white font-mono text-xs font-bold rounded transition-colors">
                   {stn.code}
                 </span>
                 <div>
-                  <div className="text-sm font-semibold text-slate-900 group-hover:text-indigo-950">
+                  <div className="text-sm font-semibold text-zinc-900 flex items-center gap-1.5">
                     {stn.name}
+                    {stn.is_junction && (
+                      <span className="text-[10px] font-mono uppercase bg-zinc-200/70 text-zinc-700 px-1 py-0.5 rounded text-[9px]">
+                        JN
+                      </span>
+                    )}
                   </div>
-                  <div className="text-xs text-slate-400">
-                    {stn.city}, {stn.state}
+                  <div className="text-xs text-zinc-500">
+                    {stn.city ? `${stn.city}, ` : ''}{stn.state}
                   </div>
                 </div>
               </div>
+
               {stn.cluster && (
-                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                  <Building2 className="w-2.5 h-2.5" />
-                  <span>City Cluster</span>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600 shrink-0">
+                  <Building2 className="w-3 h-3" />
+                  <span>Cluster</span>
                 </span>
               )}
             </button>
