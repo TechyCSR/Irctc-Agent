@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import FastAPI, Query
@@ -130,6 +131,147 @@ async def stream_search_routes(
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+_ct_instance = None
+_SCHEDULE_CACHE = {}
+
+
+def _get_ct_instance():
+    global _ct_instance
+    if _ct_instance is None:
+        from MultiFeatures.IndianRailway import confirmtkt
+        _ct_instance = confirmtkt.Confirmtkt()
+    return _ct_instance
+
+
+@app.get("/api/trains/{train_no}/schedule")
+async def get_train_schedule(train_no: str, date: Optional[str] = Query(None)):
+    """Fetch complete station stops, arrival/departure, halts, and platforms for a train."""
+    clean_no = "".join(filter(str.isdigit, train_no))
+    if not clean_no:
+        return JSONResponse(status_code=400, content={"error": "Invalid train number"})
+
+    use_date = date or datetime.now().strftime("%d-%m-%Y")
+    cache_key = f"{clean_no}_{use_date}"
+    if cache_key in _SCHEDULE_CACHE:
+        return _SCHEDULE_CACHE[cache_key]
+
+    try:
+        ct = _get_ct_instance()
+        raw = await ct.train_schedule(int(clean_no), use_date)
+        if not raw or not isinstance(raw, dict):
+            return JSONResponse(status_code=404, content={"error": "Schedule not found"})
+
+        raw_sched = raw.get("Schedule") or []
+        stops = []
+        for s in raw_sched:
+            stops.append({
+                "code": s.get("StationCode"),
+                "name": s.get("StationName"),
+                "arrival": s.get("ArrivalTime") or "--:--",
+                "departure": s.get("DepartureTime") or "--:--",
+                "halt": s.get("HaltMinutes") or "",
+                "platform": s.get("ExpectedPlatformNo") or "",
+                "distance_km": s.get("Distance") or "0",
+                "day": s.get("Day") or 1
+            })
+
+        result = {
+            "train_no": str(raw.get("TrainNo") or clean_no),
+            "train_name": raw.get("TrainName") or "",
+            "source": raw.get("Source") or raw.get("SourceCode"),
+            "destination": raw.get("Destination") or raw.get("DestinationCode"),
+            "total_duration": raw.get("TotalDuration") or "",
+            "has_pantry": bool(raw.get("HasPantry")),
+            "punctuality_rating": raw.get("PunctualityRating"),
+            "food_rating": raw.get("FoodRating"),
+            "cleanliness_rating": raw.get("CleanlinessRating"),
+            "stops": stops
+        }
+        _SCHEDULE_CACHE[cache_key] = result
+        return result
+    except Exception as e:
+        logger.exception("Schedule lookup error")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/api/availability/multi-date")
+async def get_multi_date_availability(
+    from_stn: str = Query(..., alias="from"),
+    to_stn: str = Query(..., alias="to"),
+    start_date: str = Query(..., description="DD-MM-YYYY format"),
+    days: int = Query(5, ge=1, le=7),
+    quota: str = Query("GN")
+):
+    """
+    Checks direct availability across 5 consecutive travel dates in parallel.
+    Provides instant multi-date comparison strip.
+    """
+    from datetime import datetime, timedelta
+
+    try:
+        start_dt = datetime.strptime(start_date, "%d-%m-%Y")
+    except Exception:
+        return JSONResponse(status_code=400, content={"error": "Invalid date format. Use DD-MM-YYYY"})
+
+    date_objs = [start_dt + timedelta(days=i) for i in range(days)]
+    date_strs = [d.strftime("%d-%m-%Y") for d in date_objs]
+
+    tasks = [
+        engine.client.fetch_trains(from_stn.upper(), to_stn.upper(), d_str, quota)
+        for d_str in date_strs
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    summary = []
+    for d_obj, d_str, trains in zip(date_objs, date_strs, results):
+        if isinstance(trains, Exception) or not trains:
+            trains_list = []
+        else:
+            trains_list = trains
+
+        confirmed_count = 0
+        rac_count = 0
+        min_fare = 999999
+        best_status = "NO DIRECT TRAINS" if not trains_list else "WL / CLOSED"
+
+        for t in trains_list:
+            avail = t.get("availability") or {}
+            fares = t.get("fares_by_class") or {}
+            for f in fares.values():
+                if 0 < f < min_fare:
+                    min_fare = f
+
+            has_avail = any(c.get("is_available") for c in avail.values())
+            has_rac = any(c.get("is_rac") for c in avail.values())
+
+            if has_avail:
+                confirmed_count += 1
+                best_status = "AVAILABLE"
+            elif has_rac:
+                rac_count += 1
+                if best_status != "AVAILABLE":
+                    best_status = "RAC"
+
+        summary.append({
+            "date": d_str,
+            "iso_date": d_obj.strftime("%Y-%m-%d"),
+            "day_name": d_obj.strftime("%a"),
+            "formatted_display": d_obj.strftime("%d %b"),
+            "total_direct_trains": len(trains_list),
+            "confirmed_trains": confirmed_count,
+            "rac_trains": rac_count,
+            "status_label": best_status,
+            "lowest_fare": min_fare if min_fare != 999999 else 0
+        })
+
+    return {
+        "from": from_stn.upper(),
+        "to": to_stn.upper(),
+        "quota": quota,
+        "dates": summary
+    }
 
 
 # Mount React production build if available

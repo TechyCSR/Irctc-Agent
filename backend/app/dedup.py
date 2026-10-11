@@ -55,6 +55,10 @@ class CleanItinerary:
     viable_classes: List[str] = field(default_factory=list)
     status_summary: str = ""
     booking_confidence: str = "CONFIRMED"  # "CONFIRMED", "RAC", "WAITLIST"
+    inter_station_transfer: bool = False
+    hub_distance_km: float = 0.0
+    recommended_cab_mins: int = 0
+    confirmation_probability: int = 95
 
     @property
     def total_duration_str(self) -> str:

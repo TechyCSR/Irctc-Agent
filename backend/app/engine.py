@@ -22,6 +22,7 @@ from backend.app.stations import (
     CITY_CLUSTERS,
     STATIONS_BY_CODE,
     get_cluster_station_codes,
+    haversine_distance,
 )
 
 logger = logging.getLogger("IrctcAgent.Engine")
@@ -227,6 +228,10 @@ class PublicSearchEngine:
                                 layover_min = int((dep2_dt - arr1_dt).total_seconds() / 60)
 
                                 same_station = (t1["to_station"] == t2["from_station"])
+                                inter_station = not same_station
+                                hub_distance_km = 0.0
+                                recommended_cab_mins = 0
+
                                 if same_station:
                                     if not (90 <= layover_min <= 540):
                                         continue
@@ -235,6 +240,11 @@ class PublicSearchEngine:
                                     if not (210 <= layover_min <= 660):
                                         continue
                                     transfer_type = f"Cross-City Transfer ({t1['to_station']} \u2192 {t2['from_station']})"
+                                    stn_a = STATIONS_BY_CODE.get(t1["to_station"])
+                                    stn_b = STATIONS_BY_CODE.get(t2["from_station"])
+                                    if stn_a and stn_b:
+                                        hub_distance_km = round(haversine_distance(stn_a.lat, stn_a.lon, stn_b.lat, stn_b.lon), 1)
+                                    recommended_cab_mins = max(20, int(hub_distance_km * 2.5 + 15)) if hub_distance_km > 0 else 30
 
                                 if layover_min < 120:
                                     layover_risk = "Tight Layover (<2 hrs)"
@@ -297,6 +307,9 @@ class PublicSearchEngine:
                                     fares_by_class=combined_fares,
                                     best_fare=best_fare,
                                     best_fare_class=best_fare_class,
+                                    inter_station_transfer=inter_station,
+                                    hub_distance_km=hub_distance_km,
+                                    recommended_cab_mins=recommended_cab_mins,
                                 )
                                 raw_transfers.append(itin)
 
@@ -382,6 +395,10 @@ class PublicSearchEngine:
             "is_detour": it.is_detour,
             "detour_ratio": it.detour_ratio,
             "transfer_type": it.transfer_type,
+            "inter_station_transfer": it.inter_station_transfer,
+            "hub_distance_km": it.hub_distance_km,
+            "recommended_cab_mins": it.recommended_cab_mins,
+            "confirmation_probability": it.confirmation_probability,
             "layover_risk": it.layover_risk,
             "layover_minutes": it.layover_minutes,
             "layover_str": it.layover_str,
@@ -400,6 +417,9 @@ class PublicSearchEngine:
                     "to": l.to_station,
                     "departure": l.dep_formatted,
                     "arrival": l.arr_formatted,
+                    "dep_time_only": l.dep_datetime.strftime("%H:%M"),
+                    "arr_time_only": l.arr_datetime.strftime("%H:%M"),
+                    "day_of_journey": l.dep_datetime.strftime("%a, %d %b"),
                     "duration": l.duration_str,
                     "alt_from": l.alt_from_stations,
                     "alt_to": l.alt_to_stations,
