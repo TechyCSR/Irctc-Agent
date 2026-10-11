@@ -93,6 +93,43 @@ class ItineraryScorer:
                 summaries.append(f"Direct: {desc}")
                 viable_classes.append(best_cls)
 
+            elif itin.route_type == "POINT_BEYOND":
+                leg = itin.legs[0]
+                leg_score, best_cls, desc = cls.evaluate_leg(leg, preferred_class)
+                score += leg_score * 1.9 + 110.0  # High bonus for unlocking confirmed quota
+
+                if leg_score >= 200.0:
+                    itin.booking_confidence = "CONFIRMED"
+                elif leg_score > 0:
+                    itin.booking_confidence = "WAITLIST"
+                else:
+                    itin.booking_confidence = "REGRET"
+
+                summaries.append(f"Point-Beyond ({itin.booking_origin} \u2192 {itin.destination}): {desc}")
+                viable_classes.append(best_cls)
+
+            elif itin.route_type == "SAME_TRAIN_SPLIT":
+                leg1 = itin.legs[0]
+                leg2 = itin.legs[1]
+                leg1_score, cls1, desc1 = cls.evaluate_leg(leg1, preferred_class)
+                leg2_score, cls2, desc2 = cls.evaluate_leg(leg2, preferred_class)
+
+                if leg1_score < 0 or leg2_score < 0:
+                    score = -80.0
+                    itin.booking_confidence = "REGRET"
+                else:
+                    score += (leg1_score + leg2_score) + 130.0  # High bonus: no train change needed
+                    if leg1_score >= 200.0 and leg2_score >= 200.0:
+                        itin.booking_confidence = "CONFIRMED"
+                    elif leg1_score >= 100.0 and leg2_score >= 100.0:
+                        itin.booking_confidence = "RAC"
+                    else:
+                        itin.booking_confidence = "WAITLIST"
+
+                summaries.append(f"Part 1 ({itin.origin}\u2192{itin.split_station}): {desc1}")
+                summaries.append(f"Part 2 ({itin.split_station}\u2192{itin.destination}): {desc2}")
+                viable_classes.extend([cls1, cls2])
+
             else:  # 1_TRANSFER
                 leg1 = itin.legs[0]
                 leg2 = itin.legs[1]

@@ -59,6 +59,12 @@ class CleanItinerary:
     hub_distance_km: float = 0.0
     recommended_cab_mins: int = 0
     confirmation_probability: int = 95
+    booking_origin: Optional[str] = None
+    boarding_station: Optional[str] = None
+    split_station: Optional[str] = None
+    lifehack_type: Optional[str] = None
+    lifehack_tip: Optional[str] = None
+    irctc_link: Optional[str] = None
 
     @property
     def total_duration_str(self) -> str:

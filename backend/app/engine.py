@@ -48,6 +48,25 @@ def parse_duration_to_minutes(dur_str: str) -> int:
     return hours * 60 + minutes
 
 
+def generate_irctc_link(
+    train_no: str,
+    doj: str,
+    src: str,
+    dest: str,
+    cls: str = "3A",
+    quota: str = "GN",
+    boarding_stn: Optional[str] = None
+) -> str:
+    """Constructs official direct IRCTC e-ticketing URL with pre-filled journey details."""
+    parts = doj.split("-")
+    dt_compact = f"{parts[2]}{parts[1]}{parts[0]}" if len(parts) == 3 else doj
+    clean_no = "".join(filter(str.isdigit, train_no)) or train_no
+    url = f"https://www.irctc.co.in/nget/booking?trainNo={clean_no}&date={dt_compact}&from={src}&to={dest}&class={cls}&quota={quota}"
+    if boarding_stn and boarding_stn != src:
+        url += f"&boardingStn={boarding_stn}"
+    return url
+
+
 class PublicSearchEngine:
     """
     Universal search engine for any origin and destination pair across India.
@@ -100,6 +119,7 @@ class PublicSearchEngine:
 
                 best_fare = min(t["fares_by_class"].values()) if t["fares_by_class"] else 0
                 best_cls = min(t["fares_by_class"], key=t["fares_by_class"].get) if t["fares_by_class"] else "None"
+                link = generate_irctc_link(t["train_number"], doj, leg.from_station, leg.to_station, best_cls, quota)
 
                 itin = CleanItinerary(
                     itinerary_id=f"DIR-{t['train_number']}-{doj}",
@@ -118,6 +138,7 @@ class PublicSearchEngine:
                     fares_by_class=t["fares_by_class"],
                     best_fare=best_fare,
                     best_fare_class=best_cls,
+                    irctc_link=link,
                 )
                 raw_directs.append(itin)
 
@@ -290,6 +311,7 @@ class PublicSearchEngine:
                                     fares_by_class=t2["fares_by_class"],
                                 )
 
+                                link1 = generate_irctc_link(t1["train_number"], doj, leg1.from_station, leg2.to_station, best_fare_class, quota)
                                 itin = CleanItinerary(
                                     itinerary_id=f"CONN-{hub.station_code}-{t1['train_number']}-{t2['train_number']}",
                                     route_type="1_TRANSFER",
@@ -310,10 +332,200 @@ class PublicSearchEngine:
                                     inter_station_transfer=inter_station,
                                     hub_distance_km=hub_distance_km,
                                     recommended_cab_mins=recommended_cab_mins,
+                                    irctc_link=link1,
                                 )
                                 raw_transfers.append(itin)
 
         return deduplicate_transfer_routes(raw_transfers)
+
+    async def search_lifehack_routes(
+        self,
+        origin_code: str,
+        dest_code: str,
+        doj: str,
+        quota: str = "GN",
+        direct_itins: Optional[List[CleanItinerary]] = None,
+        corridor_hubs: Optional[List[CorridorHub]] = None
+    ) -> List[CleanItinerary]:
+        """
+        Discovers IRCTC lifehacks:
+        1. Same-Train Split Ticketing: Breaks journey on intermediate station on the SAME physical train
+           when direct ticket is waitlisted.
+        2. Point-Beyond Boarding: Books from originating station where General Quota has confirmed seats,
+           and sets user's station as the official boarding point.
+        """
+        lifehacks: List[CleanItinerary] = []
+        if not direct_itins:
+            return lifehacks
+
+        if corridor_hubs is None:
+            corridor_hubs = select_corridor_hubs(origin_code, dest_code, max_hubs=4)
+
+        # 1. Same-Train Split Ticketing:
+        for dir_itin in direct_itins:
+            leg = dir_itin.legs[0]
+            tno = leg.train_number
+            tname = leg.train_name
+
+            for hub in corridor_hubs[:3]:
+                if hub.station_code == origin_code or hub.station_code == dest_code:
+                    continue
+
+                r1_task = self.client.fetch_trains(origin_code, hub.station_code, doj, quota)
+                r2_task = self.client.fetch_trains(hub.station_code, dest_code, doj, quota)
+                r1, r2 = await asyncio.gather(r1_task, r2_task, return_exceptions=True)
+
+                if isinstance(r1, Exception) or not r1 or isinstance(r2, Exception) or not r2:
+                    continue
+
+                m1 = next((t for t in r1 if t["train_number"] == tno), None)
+                m2 = next((t for t in r2 if t["train_number"] == tno), None)
+
+                if m1 and m2:
+                    common_classes = set(m1["availability"].keys()).intersection(set(m2["availability"].keys()))
+                    viable_cls = None
+                    for c in ["3A", "2A", "SL", "3E", "1A", "CC"]:
+                        if c in common_classes:
+                            a1 = m1["availability"][c]
+                            a2 = m2["availability"][c]
+                            if (a1.get("is_available") or a1.get("is_rac")) and (a2.get("is_available") or a2.get("is_rac")):
+                                viable_cls = c
+                                break
+
+                    if viable_cls:
+                        dur1 = parse_duration_to_minutes(m1["duration"])
+                        dur2 = parse_duration_to_minutes(m2["duration"])
+                        try:
+                            dep1_dt = datetime.datetime.strptime(f"{doj} {m1['departure_time']}", "%d-%m-%Y %H:%M")
+                        except Exception:
+                            continue
+                        arr1_dt = dep1_dt + datetime.timedelta(minutes=dur1)
+
+                        try:
+                            dep2_dt = datetime.datetime.strptime(f"{m2['doj']} {m2['departure_time']}", "%d-%m-%Y %H:%M")
+                        except Exception:
+                            dep2_dt = arr1_dt
+                        arr2_dt = dep2_dt + datetime.timedelta(minutes=dur2)
+
+                        combined_fares = {}
+                        for c in ["3A", "2A", "SL", "3E", "1A", "CC"]:
+                            f1 = m1["fares_by_class"].get(c, 0)
+                            f2 = m2["fares_by_class"].get(c, 0)
+                            if f1 > 0 and f2 > 0:
+                                combined_fares[c] = f1 + f2
+
+                        best_fare = min(combined_fares.values()) if combined_fares else 0
+                        best_cls = min(combined_fares, key=combined_fares.get) if combined_fares else viable_cls
+
+                        nleg1 = NormalizedLeg(
+                            train_number=tno,
+                            train_name=tname,
+                            from_station=m1["from_station"],
+                            to_station=m1["to_station"],
+                            dep_datetime=dep1_dt,
+                            arr_datetime=arr1_dt,
+                            duration_str=m1["duration"],
+                            availability=m1["availability"],
+                            fares_by_class=m1["fares_by_class"],
+                        )
+                        nleg2 = NormalizedLeg(
+                            train_number=tno,
+                            train_name=tname,
+                            from_station=m2["from_station"],
+                            to_station=m2["to_station"],
+                            dep_datetime=dep2_dt,
+                            arr_datetime=arr2_dt,
+                            duration_str=m2["duration"],
+                            availability=m2["availability"],
+                            fares_by_class=m2["fares_by_class"],
+                        )
+
+                        link = generate_irctc_link(tno, doj, m1["from_station"], m2["to_station"], best_cls, quota)
+
+                        split_itin = CleanItinerary(
+                            itinerary_id=f"SPLIT-{tno}-{hub.station_code}-{doj}",
+                            route_type="SAME_TRAIN_SPLIT",
+                            origin=m1["from_station"],
+                            destination=m2["to_station"],
+                            transit_hub=hub.station_code,
+                            corridor_name=f"Same Train #{tno} Split via {hub.station_code}",
+                            is_detour=False,
+                            detour_ratio=1.0,
+                            legs=[nleg1, nleg2],
+                            layover_minutes=0,
+                            total_duration_minutes=dur1 + dur2,
+                            transfer_type=f"Stay in Same Train (Split at {hub.station_code})",
+                            layover_risk="Zero Risk (Same Coach/Train)",
+                            fares_by_class=combined_fares,
+                            best_fare=best_fare,
+                            best_fare_class=best_cls,
+                            split_station=hub.station_code,
+                            lifehack_type="SAME_TRAIN_SPLIT",
+                            lifehack_tip=f"Same-Train Secret: Direct ticket is waitlisted, but booking Leg 1 to {hub.station_code} and Leg 2 to {dest_code} on the same train unlocks 100% confirmed berths in {viable_cls} without changing seats!",
+                            irctc_link=link
+                        )
+                        lifehacks.append(split_itin)
+                        break
+
+        # 2. Point-Beyond Discovery:
+        cluster_stations = get_cluster_station_codes(origin_code)
+        for alt_src in cluster_stations:
+            if alt_src == origin_code:
+                continue
+            alt_res = await self.client.fetch_trains(alt_src, dest_code, doj, quota)
+            for at in alt_res:
+                avail = at.get("availability", {})
+                for cls_name, cinfo in avail.items():
+                    if cinfo.get("is_available"):
+                        dur = parse_duration_to_minutes(at["duration"])
+                        try:
+                            dep_dt = datetime.datetime.strptime(f"{doj} {at['departure_time']}", "%d-%m-%Y %H:%M")
+                        except Exception:
+                            continue
+                        arr_dt = dep_dt + datetime.timedelta(minutes=dur)
+
+                        nleg = NormalizedLeg(
+                            train_number=at["train_number"],
+                            train_name=at["train_name"],
+                            from_station=at["from_station"],
+                            to_station=at["to_station"],
+                            dep_datetime=dep_dt,
+                            arr_datetime=arr_dt,
+                            duration_str=at["duration"],
+                            availability=avail,
+                            fares_by_class=at["fares_by_class"],
+                        )
+                        link = generate_irctc_link(
+                            at["train_number"], doj, alt_src, dest_code, cls_name, quota, boarding_stn=origin_code
+                        )
+                        best_fare = at["fares_by_class"].get(cls_name, 0)
+                        pt_itin = CleanItinerary(
+                            itinerary_id=f"PTBEYOND-{at['train_number']}-{alt_src}-{doj}",
+                            route_type="POINT_BEYOND",
+                            origin=origin_code,
+                            destination=dest_code,
+                            transit_hub=None,
+                            corridor_name=f"Point-Beyond from {alt_src}",
+                            is_detour=False,
+                            detour_ratio=1.0,
+                            legs=[nleg],
+                            layover_minutes=0,
+                            total_duration_minutes=dur,
+                            transfer_type="Direct Travel (Origin Quota Hack)",
+                            layover_risk="None",
+                            fares_by_class=at["fares_by_class"],
+                            best_fare=best_fare,
+                            best_fare_class=cls_name,
+                            booking_origin=alt_src,
+                            boarding_station=origin_code,
+                            lifehack_type="POINT_BEYOND",
+                            lifehack_tip=f"Point-Beyond Lifehack: Book from originating station {alt_src} to tap into confirmed General Quota, and set your Boarding Station as {origin_code} on IRCTC with zero penalty!",
+                            irctc_link=link
+                        )
+                        lifehacks.append(pt_itin)
+                        break
+
+        return lifehacks
 
     async def search_all(
         self,
@@ -330,7 +542,11 @@ class PublicSearchEngine:
         transfer_task = self.search_transfer_trains(origin_code, dest_code, doj, quota, corridor_hubs)
 
         directs, transfers = await asyncio.gather(direct_task, transfer_task)
-        combined = directs + transfers
+
+        # Discover IRCTC Lifehacks (Same-Train Split + Point-Beyond)
+        lifehacks = await self.search_lifehack_routes(origin_code, dest_code, doj, quota, directs, corridor_hubs)
+
+        combined = directs + lifehacks + transfers
         return ItineraryScorer.rank_itineraries(combined, preferred_class)
 
     async def stream_search(
@@ -366,9 +582,12 @@ class PublicSearchEngine:
             "routes": [self._serialize_itin(it) for it in scored_directs]
         }
 
-        # Step 2: Search connecting hubs and emit
-        transfers = await self.search_transfer_trains(origin_code, dest_code, doj, quota, corridor_hubs)
-        all_itins = directs + transfers
+        # Step 2: Search connecting hubs and lifehacks
+        transfers_task = self.search_transfer_trains(origin_code, dest_code, doj, quota, corridor_hubs)
+        lifehacks_task = self.search_lifehack_routes(origin_code, dest_code, doj, quota, directs, corridor_hubs)
+        transfers, lifehacks = await asyncio.gather(transfers_task, lifehacks_task)
+
+        all_itins = directs + lifehacks + transfers
         ranked = ItineraryScorer.rank_itineraries(all_itins)
 
         confirmed_count = sum(1 for it in ranked if it.booking_confidence == "CONFIRMED")
@@ -409,6 +628,19 @@ class PublicSearchEngine:
             "fares_by_class": it.fares_by_class,
             "booking_confidence": it.booking_confidence,
             "summary": it.status_summary,
+            "lifehack_type": it.lifehack_type,
+            "lifehack_tip": it.lifehack_tip,
+            "booking_origin": it.booking_origin,
+            "boarding_station": it.boarding_station,
+            "split_station": it.split_station,
+            "irctc_link": it.irctc_link or generate_irctc_link(
+                train_no=it.legs[0].train_number,
+                doj=it.legs[0].dep_datetime.strftime("%d-%m-%Y"),
+                src=it.legs[0].from_station,
+                dest=it.legs[-1].to_station,
+                cls=it.best_fare_class if it.best_fare_class != "None" else "3A",
+                quota="GN"
+            ),
             "legs": [
                 {
                     "train_no": l.train_number,
