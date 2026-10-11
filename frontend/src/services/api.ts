@@ -1,4 +1,14 @@
-import type { RouteItinerary, StationItem, TrainScheduleResponse, MultiDateResponse } from '../types';
+import type {
+  RouteItinerary,
+  StationItem,
+  TrainScheduleResponse,
+  MultiDateResponse,
+  QuotaItem,
+  TrainCategoryItem,
+  FareBreakdownItem,
+  ChartingStatusResponse,
+  WatchdogAlertItem,
+} from '../types';
 
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
@@ -86,6 +96,90 @@ export async function getMultiDateAvailability(
     throw new Error('Failed to fetch multi-date availability');
   }
   return res.json();
+}
+
+export async function getQuotas(): Promise<QuotaItem[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/quotas`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.quotas || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getTrainCategories(): Promise<TrainCategoryItem[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/trains/categories`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.categories || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getFareBreakdown(fare: number, travelClass: string): Promise<FareBreakdownItem> {
+  const params = new URLSearchParams({
+    fare: fare.toString(),
+    class: travelClass,
+  });
+  const res = await fetch(`${API_BASE_URL}/api/fares/breakdown?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch fare breakdown');
+  }
+  return res.json();
+}
+
+export async function getChartingStatus(depTime: string, date: string): Promise<ChartingStatusResponse> {
+  const params = new URLSearchParams({
+    dep_time: depTime,
+    date,
+  });
+  const res = await fetch(`${API_BASE_URL}/api/charting/status?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch charting status');
+  }
+  return res.json();
+}
+
+export async function subscribeWatchdog(payload: {
+  train_no: string;
+  doj: string;
+  from_stn: string;
+  to_stn: string;
+  travel_class: string;
+  quota: string;
+  target_status?: string;
+  notify_channel?: string;
+  contact?: string;
+}): Promise<WatchdogAlertItem> {
+  const res = await fetch(`${API_BASE_URL}/api/watchdog/subscribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to subscribe watchdog alert');
+  return res.json();
+}
+
+export async function listWatchdogs(): Promise<WatchdogAlertItem[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/watchdog/list`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.alerts || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteWatchdog(alertId: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE_URL}/api/watchdog/${encodeURIComponent(alertId)}`, {
+    method: 'DELETE',
+  });
+  return res.ok;
 }
 
 export function getStreamUrl(fromCode: string, toCode: string, date: string, quota = 'GN'): string {

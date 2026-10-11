@@ -7,9 +7,18 @@ export interface StationItem {
   is_junction?: boolean;
 }
 
+export interface TrainCategoryInfo {
+  category: string;
+  label: string;
+  badge: string;
+  speed_tier: string;
+  color: string;
+}
+
 export interface TrainLeg {
   train_no: string;
   train_name: string;
+  category?: TrainCategoryInfo;
   from: string;
   to: string;
   departure: string;
@@ -28,7 +37,7 @@ export interface RouteItinerary {
   id: string;
   rank: number;
   score: number;
-  type: 'DIRECT' | '1_TRANSFER';
+  type: 'DIRECT' | '1_TRANSFER' | 'SAME_TRAIN_SPLIT' | 'POINT_BEYOND';
   origin: string;
   destination: string;
   hub: string;
@@ -50,6 +59,13 @@ export interface RouteItinerary {
   fares_by_class: Record<string, number>;
   booking_confidence: 'CONFIRMED' | 'RAC' | 'WAITLIST' | 'REGRET';
   summary: string;
+  primary_category?: string;
+  lifehack_type?: 'SAME_TRAIN_SPLIT' | 'POINT_BEYOND' | null;
+  lifehack_tip?: string;
+  booking_origin?: string;
+  boarding_station?: string;
+  split_station?: string;
+  irctc_link?: string;
   legs: TrainLeg[];
 }
 
@@ -94,6 +110,65 @@ export interface MultiDateResponse {
   to: string;
   quota: string;
   dates: MultiDateItem[];
+}
+
+export interface QuotaItem {
+  code: string;
+  name: string;
+  short_name: string;
+  desc: string;
+  eligibility: string;
+  advance_days: number;
+}
+
+export interface TrainCategoryItem {
+  id: string;
+  label: string;
+  badge: string;
+  description: string;
+}
+
+export interface FareBreakdownItem {
+  total_fare: number;
+  base_fare: number;
+  reservation_fee: number;
+  superfast_surcharge: number;
+  dynamic_surge: number;
+  gst: number;
+  gst_rate: string;
+  travel_class: string;
+  currency: string;
+}
+
+export interface WatchdogAlertItem {
+  id: string;
+  train_no: string;
+  doj: string;
+  from_stn: string;
+  to_stn: string;
+  travel_class: string;
+  quota: string;
+  target_status: string;
+  notify_channel: string;
+  contact: string;
+  created_at: string;
+  status: string;
+  last_checked?: string;
+  last_seen_seats?: string;
+}
+
+export interface ChartingStatusResponse {
+  scheduled_departure: string;
+  first_chart_time: string;
+  second_chart_time: string;
+  is_first_chart_prepared: boolean;
+  is_second_chart_prepared: boolean;
+  is_current_booking_open: boolean;
+  minutes_to_departure: number;
+  minutes_to_first_chart: number;
+  status_code: string;
+  status_label: string;
+  guidance_tip: string;
 }
 
 export interface SearchState {
