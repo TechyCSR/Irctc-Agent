@@ -563,17 +563,31 @@ const MainApp: React.FC = () => {
 
         {/* Main Body */}
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
-          {/* Search Control Card with Glass Panel */}
-          <div className="glass-card bg-white/85 dark:bg-zinc-900/85 border border-zinc-200/90 dark:border-zinc-800/90 rounded-2xl p-5 sm:p-6 shadow-xl dark:shadow-2xl no-print transition-all">
-            <form onSubmit={handleSearchSubmit} className="space-y-4">
+          {/* Search Control Card with Glass Panel (Enlarged & Primary Focus) */}
+          <div className="glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200/90 dark:border-zinc-800/90 rounded-3xl p-6 sm:p-8 lg:p-9 shadow-2xl dark:shadow-2xl no-print transition-all ring-1 ring-zinc-950/5 dark:ring-white/10">
+            {/* Focused Search Card Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-3 border-b border-zinc-100 dark:border-zinc-800/80">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-mono text-xs sm:text-sm font-bold uppercase tracking-wider text-zinc-950 dark:text-white">
+                  Smart Route Finder & Confirmed Berth Optimization
+                </span>
+              </div>
+              <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">
+                8,566 Broad Gauge Stations Network
+              </span>
+            </div>
+
+            <form onSubmit={handleSearchSubmit} className="space-y-5">
               {/* Origin & Destination Inputs with Swap */}
-              <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-11 gap-3.5 items-end">
                 <div className="md:col-span-5">
                   <StationInput
                     label="From Station"
                     value={fromStation}
                     onChange={setFromStation}
                     placeholder="Search any origin station or city..."
+                    size="lg"
                   />
                 </div>
 
@@ -582,9 +596,9 @@ const MainApp: React.FC = () => {
                     type="button"
                     onClick={handleSwap}
                     title="Swap Origin and Destination"
-                    className="p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-white bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition active:scale-95"
+                    className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-white bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition active:scale-95 shadow-xs"
                   >
-                    <ArrowRightLeft className="w-4 h-4" />
+                    <ArrowRightLeft className="w-4.5 h-4.5" />
                   </button>
                 </div>
 
@@ -594,15 +608,16 @@ const MainApp: React.FC = () => {
                     value={toStation}
                     onChange={setToStation}
                     placeholder="Search any destination station or city..."
+                    size="lg"
                   />
                 </div>
               </div>
 
               {/* Date, Quota, Class, and Submit Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5 pt-2">
                 {/* Journey Date */}
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">
+                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-2">
                     Journey Date
                   </label>
                   <input
@@ -610,19 +625,19 @@ const MainApp: React.FC = () => {
                     value={journeyDate}
                     min={TODAY_ISO}
                     onChange={(e) => setJourneyDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
+                    className="w-full px-4 py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
                   />
                 </div>
 
                 {/* Quota (All 8 IRCTC Quotas) */}
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">
+                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-2">
                     Quota
                   </label>
                   <select
                     value={quota}
                     onChange={(e) => setQuota(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
+                    className="w-full px-4 py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
                   >
                     {IRCTC_QUOTAS.map((q) => (
                       <option key={q.code} value={q.code}>
@@ -634,13 +649,13 @@ const MainApp: React.FC = () => {
 
                 {/* Preferred Class */}
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">
+                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-2">
                     Preferred Class
                   </label>
                   <select
                     value={classFilter}
                     onChange={(e) => setClassFilter(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
+                    className="w-full px-4 py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
                   >
                     <option value="ALL">All Classes</option>
                     <option value="3A">AC 3 Tier (3A)</option>
@@ -658,17 +673,17 @@ const MainApp: React.FC = () => {
                   <button
                     type="submit"
                     disabled={isSearching}
-                    className="flex-1 py-2.5 px-4 rounded-lg bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:bg-zinc-400 text-white dark:text-zinc-950 font-mono text-sm font-bold flex items-center justify-center gap-2 transition shadow-xs active:scale-[0.98]"
+                    className="flex-1 py-3.5 px-6 rounded-xl bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:bg-zinc-400 text-white dark:text-zinc-950 font-mono text-base font-bold flex items-center justify-center gap-2.5 transition shadow-md hover:shadow-lg active:scale-[0.98]"
                   >
                     {isSearching ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white dark:border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                        <div className="w-4.5 h-4.5 border-2 border-white dark:border-zinc-950 border-t-transparent rounded-full animate-spin" />
                         <span>SEARCHING...</span>
                       </>
                     ) : (
                       <>
-                        <Search className="w-4 h-4" />
-                        <span>FIND CONFIRMED SEATS</span>
+                        <Search className="w-4.5 h-4.5" />
+                        <span>FIND SEATS</span>
                       </>
                     )}
                   </button>
@@ -678,7 +693,7 @@ const MainApp: React.FC = () => {
                       type="button"
                       onClick={handleResetSearch}
                       title="Clear search inputs and reset results"
-                      className="py-2.5 px-3 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-200 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition active:scale-95 flex items-center gap-1.5 font-mono text-xs font-bold"
+                      className="py-3.5 px-4 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-200 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition active:scale-95 flex items-center gap-1.5 font-mono text-xs font-bold shadow-xs"
                     >
                       <RotateCcw className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                       <span className="hidden md:inline">Reset</span>
@@ -1100,9 +1115,9 @@ const MainApp: React.FC = () => {
             </div>
           )}
 
-          {/* Realistic 3D Interactive Moving Train Visualizer (before search or after reset) */}
+          {/* Realistic 3D Interactive Moving Train Visualizer (before search or after reset) - Hidden on mobile screens */}
           {!hasSearched && (
-            <div className="space-y-4 animate-slide-up">
+            <div className="hidden md:block max-w-4xl mx-auto w-full space-y-4 animate-slide-up">
               <InteractiveTrainCanvas isDark={isDark} />
             </div>
           )}

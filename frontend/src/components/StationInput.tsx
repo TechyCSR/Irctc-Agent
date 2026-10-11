@@ -8,13 +8,15 @@ interface StationInputProps {
   value: StationItem | null;
   onChange: (station: StationItem | null) => void;
   placeholder?: string;
+  size?: 'md' | 'lg';
 }
 
 export const StationInput: React.FC<StationInputProps> = ({
   label,
   value,
   onChange,
-  placeholder = 'Search by station code, name, or city...'
+  placeholder = 'Search by station code, name, or city...',
+  size = 'lg',
 }) => {
   const [query, setQuery] = useState(value ? `${value.name} (${value.code})` : '');
   const [suggestions, setSuggestions] = useState<StationItem[]>([]);
@@ -82,22 +84,32 @@ export const StationInput: React.FC<StationInputProps> = ({
     setIsOpen(false);
   };
 
+  const isLg = size === 'lg';
+
   return (
     <div className="relative w-full" ref={wrapperRef}>
-      <div className="flex items-center justify-between mb-1.5">
-        <label className="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
+      <div className={`flex items-center justify-between ${isLg ? 'mb-2' : 'mb-1.5'}`}>
+        <label
+          className={`font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider ${
+            isLg ? 'text-xs' : 'text-[11px]'
+          }`}
+        >
           {label}
         </label>
         {value && (
-          <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
+          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
             {value.code}
           </span>
         )}
       </div>
 
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400 dark:text-zinc-500">
-          <Search className="w-4 h-4 text-zinc-400 dark:text-zinc-500" />
+        <div
+          className={`absolute inset-y-0 left-0 flex items-center pointer-events-none text-zinc-400 dark:text-zinc-500 ${
+            isLg ? 'pl-4' : 'pl-3.5'
+          }`}
+        >
+          <Search className={isLg ? 'w-4.5 h-4.5 text-zinc-400 dark:text-zinc-400' : 'w-4 h-4 text-zinc-400'} />
         </div>
 
         <input
@@ -109,22 +121,28 @@ export const StationInput: React.FC<StationInputProps> = ({
             else if (query) fetchStations(query);
           }}
           placeholder={placeholder}
-          className="w-full pl-10 pr-9 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm font-semibold text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-950 dark:focus:ring-white focus:border-zinc-950 dark:focus:border-white transition-all shadow-xs"
+          className={`w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 font-semibold text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white focus:border-zinc-950 dark:focus:border-white transition-all shadow-xs ${
+            isLg
+              ? 'pl-11 pr-10 py-3.5 rounded-xl text-base'
+              : 'pl-10 pr-9 py-2.5 rounded-lg text-sm'
+          }`}
         />
 
         {query && (
           <button
             type="button"
             onClick={handleClear}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition"
+            className={`absolute inset-y-0 right-0 flex items-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition ${
+              isLg ? 'pr-3.5' : 'pr-3'
+            }`}
           >
-            <X className="w-3.5 h-3.5" />
+            <X className={isLg ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
           </button>
         )}
 
         {isLoading && (
-          <div className="absolute inset-y-0 right-8 pr-1 flex items-center">
-            <div className="w-3.5 h-3.5 border-2 border-zinc-900 dark:border-zinc-100 border-t-transparent rounded-full animate-spin" />
+          <div className={`absolute inset-y-0 flex items-center ${isLg ? 'right-9 pr-1' : 'right-8 pr-1'}`}>
+            <div className="w-4 h-4 border-2 border-zinc-900 dark:border-zinc-100 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>
