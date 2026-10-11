@@ -9,26 +9,40 @@ import logging
 import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple
 
-from backend.app.client import AsyncTrainClient
-from backend.app.corridor import CorridorHub, select_corridor_hubs
-from backend.app.dedup import (
-    CleanItinerary,
-    NormalizedLeg,
-    deduplicate_direct_routes,
-    deduplicate_transfer_routes,
-)
-from backend.app.scorer import ItineraryScorer
-from backend.app.stations import (
-    CITY_CLUSTERS,
-    STATIONS_BY_CODE,
-    get_cluster_station_codes,
-    haversine_distance,
-)
-
 try:
-    from backend.app.rail_metadata import classify_train
-except ImportError:
+    from app.client import AsyncTrainClient
+    from app.corridor import CorridorHub, select_corridor_hubs
+    from app.dedup import (
+        CleanItinerary,
+        NormalizedLeg,
+        deduplicate_direct_routes,
+        deduplicate_transfer_routes,
+    )
+    from app.scorer import ItineraryScorer
+    from app.stations import (
+        CITY_CLUSTERS,
+        STATIONS_BY_CODE,
+        get_cluster_station_codes,
+        haversine_distance,
+    )
     from app.rail_metadata import classify_train
+except ImportError:
+    from backend.app.client import AsyncTrainClient
+    from backend.app.corridor import CorridorHub, select_corridor_hubs
+    from backend.app.dedup import (
+        CleanItinerary,
+        NormalizedLeg,
+        deduplicate_direct_routes,
+        deduplicate_transfer_routes,
+    )
+    from backend.app.scorer import ItineraryScorer
+    from backend.app.stations import (
+        CITY_CLUSTERS,
+        STATIONS_BY_CODE,
+        get_cluster_station_codes,
+        haversine_distance,
+    )
+    from backend.app.rail_metadata import classify_train
 
 logger = logging.getLogger("IrctcAgent.Engine")
 

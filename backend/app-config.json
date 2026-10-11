@@ -4,6 +4,7 @@
   "stack": "python_3_11",
   "memory": 512,
   "env_variables": {
+    "PORT": "9000",
     "CORS_ORIGINS": "*",
     "PYTHONPATH": "lib:."
   }

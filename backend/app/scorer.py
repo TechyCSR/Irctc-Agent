@@ -5,7 +5,10 @@ optimizes layovers, and assigns clear Recommendation ranks.
 """
 
 from typing import List, Tuple
-from backend.app.dedup import CleanItinerary, NormalizedLeg
+try:
+    from app.dedup import CleanItinerary, NormalizedLeg
+except ImportError:
+    from backend.app.dedup import CleanItinerary, NormalizedLeg
 
 
 class ItineraryScorer:

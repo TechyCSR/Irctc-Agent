@@ -7,12 +7,20 @@ dynamically selecting the most optimal transit junctions along the natural trave
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from backend.app.stations import (
-    CITY_CLUSTERS,
-    STATIONS_BY_CODE,
-    STATIONS_DATA,
-    haversine_distance,
-)
+try:
+    from app.stations import (
+        CITY_CLUSTERS,
+        STATIONS_BY_CODE,
+        STATIONS_DATA,
+        haversine_distance,
+    )
+except ImportError:
+    from backend.app.stations import (
+        CITY_CLUSTERS,
+        STATIONS_BY_CODE,
+        STATIONS_DATA,
+        haversine_distance,
+    )
 
 
 @dataclass

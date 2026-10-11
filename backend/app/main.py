@@ -25,17 +25,17 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
-    from backend.app.engine import PublicSearchEngine
-    from backend.app.stations import STATIONS_DATA, search_stations
-    from backend.app.cache import search_cache, schedule_cache, multidate_cache
-    from backend.app.watchdog import watchdog_manager, calculate_charting_status
-    from backend.app.rail_metadata import ALL_QUOTAS, TRAIN_CATEGORIES, calculate_fare_breakdown
-except ImportError:
     from app.engine import PublicSearchEngine
     from app.stations import STATIONS_DATA, search_stations
     from app.cache import search_cache, schedule_cache, multidate_cache
     from app.watchdog import watchdog_manager, calculate_charting_status
     from app.rail_metadata import ALL_QUOTAS, TRAIN_CATEGORIES, calculate_fare_breakdown
+except ImportError:
+    from backend.app.engine import PublicSearchEngine
+    from backend.app.stations import STATIONS_DATA, search_stations
+    from backend.app.cache import search_cache, schedule_cache, multidate_cache
+    from backend.app.watchdog import watchdog_manager, calculate_charting_status
+    from backend.app.rail_metadata import ALL_QUOTAS, TRAIN_CATEGORIES, calculate_fare_breakdown
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("IrctcAgent.API")
@@ -374,4 +374,4 @@ if os.path.exists(dist_dir):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("X_ZOHO_CATALYST_LISTEN_PORT", os.getenv("PORT", 8000)))
-    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
