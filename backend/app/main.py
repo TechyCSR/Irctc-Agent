@@ -22,14 +22,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("IrctcAgent.API")
 
 app = FastAPI(
-    title="IRCTC Universal Smart Route API",
-    description="Public High-Performance Indian Railways Route & Live Seat Finder",
+    title="IRCTC AGENT API",
+    description="Public High-Performance Indian Railways Route & Live Seat Discovery Agent",
     version="2.0.0"
 )
 
+cors_origins_env = os.getenv("CORS_ORIGINS", "*")
+allowed_origins = ["*"] if cors_origins_env == "*" else [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
