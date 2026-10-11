@@ -64,3 +64,54 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     border: 1px solid #e4e4e7 !important;
   }
 }
+
+/* Custom Glassmorphic & Pathfinder Animations */
+@keyframes radar-sweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes laser-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes train-glide {
+  0% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+  100% {
+    transform: translateX(-6px);
+  }
+}
+
+.animate-radar-sweep {
+  animation: radar-sweep 2.8s linear infinite;
+}
+
+.animate-laser-sweep {
+  animation: laser-sweep 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-train-glide {
+  animation: train-glide 1.8s ease-in-out infinite;
+}
+
+.glass-card {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}

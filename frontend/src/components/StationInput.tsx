@@ -85,19 +85,19 @@ export const StationInput: React.FC<StationInputProps> = ({
   return (
     <div className="relative w-full" ref={wrapperRef}>
       <div className="flex items-center justify-between mb-1.5">
-        <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
+        <label className="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
           {label}
         </label>
         {value && (
-          <span className="text-[10px] font-mono text-zinc-400">
+          <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
             {value.code}
           </span>
         )}
       </div>
 
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
-          <Search className="w-4 h-4 text-zinc-500" />
+        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400 dark:text-zinc-500">
+          <Search className="w-4 h-4 text-zinc-400 dark:text-zinc-500" />
         </div>
 
         <input
@@ -130,7 +130,7 @@ export const StationInput: React.FC<StationInputProps> = ({
       </div>
 
       {isOpen && suggestions.length > 0 && (
-        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl max-h-64 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/80">
+        <div className="absolute z-50 left-0 right-0 mt-1.5 glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-2xl max-h-64 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/80">
           {suggestions.map((stn) => (
             <button
               key={stn.code}

@@ -8,12 +8,18 @@ import {
   History,
   Info,
   ExternalLink,
-  Compass,
   X,
   SlidersHorizontal,
   Sun,
   Moon,
-  Zap
+  Zap,
+  RotateCcw,
+  Trash2,
+  Sparkles,
+  Clock,
+  ShieldCheck,
+  Target,
+  ArrowRight
 } from 'lucide-react';
 import { StationInput } from './components/StationInput';
 import { ItineraryCard } from './components/ItineraryCard';
@@ -25,6 +31,7 @@ import { CoachSeatVisualizerModal } from './components/CoachSeatVisualizerModal'
 import { FareBreakdownModal } from './components/FareBreakdownModal';
 import { WatchdogModal } from './components/WatchdogModal';
 import { ExportShareModal } from './components/ExportShareModal';
+import { SearchingRadarLoader } from './components/SearchingRadarLoader';
 import { ToastProvider, useToast } from './components/Toast';
 import { useTheme } from './context/ThemeContext';
 import { searchRoutesREST, searchStations } from './services/api';
@@ -254,6 +261,42 @@ const MainApp: React.FC = () => {
     setToStation(temp);
   };
 
+  // Reset Search & Recommendations
+  const handleResetSearch = useCallback(() => {
+    setFromStation(null);
+    setToStation(null);
+    setJourneyDate(getTomorrowDateStr());
+    setQuota('GN');
+    setClassFilter('ALL');
+    setCategoryFilter('ALL');
+    setHubFilter('ALL');
+    setSortBy('SCORE');
+    setTextFilter('');
+    setShowAdvancedFilters(false);
+    setSameStationOnly(false);
+    setMinLayoverMinutes(0);
+    setDepartureTimeWindow('ALL');
+    setActiveTab('ALL');
+    setRoutes([]);
+    setHasSearched(false);
+    setTotalEvaluated(0);
+    setConfirmedCount(0);
+    setLowestFare(0);
+    window.history.replaceState(null, '', window.location.pathname);
+    showToast('Search reset successfully', 'info');
+  }, [showToast]);
+
+  // Clear Recent Searches History
+  const handleClearRecentSearches = useCallback(() => {
+    setRecentSearches([]);
+    try {
+      localStorage.removeItem('irctc_agent_recent_searches');
+    } catch {
+      // Ignore storage errors
+    }
+    showToast('Recent searches cleared', 'info');
+  }, [showToast]);
+
   // Execute Search
   const executeSearch = useCallback(
     async (src: StationItem | null, dst: StationItem | null, date: string, qCode: string) => {
@@ -444,14 +487,14 @@ const MainApp: React.FC = () => {
 
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans selection:bg-zinc-950 selection:text-white dark:selection:bg-white dark:selection:text-zinc-950">
         {/* Top Ambient Visualizer Header */}
-        <header className="relative border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden no-print">
+        <header className="relative border-b border-zinc-200/80 dark:border-zinc-800/80 glass-card bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30 overflow-hidden no-print transition-all">
           {/* Three.js Ambient Particle Grid Canvas */}
           <AmbientRouteCanvas
             isSearching={isSearching}
-            className="absolute inset-0 w-full h-full opacity-30 dark:opacity-20"
+            className="absolute inset-0 w-full h-full opacity-30 dark:opacity-20 pointer-events-none"
           />
 
-          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-7">
+          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2.5">
@@ -474,6 +517,19 @@ const MainApp: React.FC = () => {
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   8,566 STATIONS
                 </span>
+
+                {/* Reset Search Button in Header */}
+                {(fromStation || toStation || hasSearched) && (
+                  <button
+                    type="button"
+                    onClick={handleResetSearch}
+                    title="Reset search and return to initial view"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 transition bg-white dark:bg-zinc-900 active:scale-95"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                    <span className="hidden sm:inline">Reset</span>
+                  </button>
+                )}
 
                 {/* Dark Mode Theme Toggle */}
                 <button
@@ -500,8 +556,8 @@ const MainApp: React.FC = () => {
 
         {/* Main Body */}
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
-          {/* Search Control Card */}
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 sm:p-6 shadow-xs no-print">
+          {/* Search Control Card with Glass Panel */}
+          <div className="glass-card bg-white/85 dark:bg-zinc-900/85 border border-zinc-200/90 dark:border-zinc-800/90 rounded-2xl p-5 sm:p-6 shadow-xl dark:shadow-2xl no-print transition-all">
             <form onSubmit={handleSearchSubmit} className="space-y-4">
               {/* Origin & Destination Inputs with Swap */}
               <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-end">
@@ -590,12 +646,12 @@ const MainApp: React.FC = () => {
                   </select>
                 </div>
 
-                {/* Search Submit Button */}
-                <div className="flex items-end">
+                {/* Search Submit & Reset Action */}
+                <div className="flex items-end gap-2">
                   <button
                     type="submit"
                     disabled={isSearching}
-                    className="w-full py-2.5 px-4 rounded-lg bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:bg-zinc-400 text-white dark:text-zinc-950 font-mono text-sm font-bold flex items-center justify-center gap-2 transition shadow-xs active:scale-[0.98]"
+                    className="flex-1 py-2.5 px-4 rounded-lg bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:bg-zinc-400 text-white dark:text-zinc-950 font-mono text-sm font-bold flex items-center justify-center gap-2 transition shadow-xs active:scale-[0.98]"
                   >
                     {isSearching ? (
                       <>
@@ -609,13 +665,25 @@ const MainApp: React.FC = () => {
                       </>
                     )}
                   </button>
+
+                  {(fromStation || toStation || hasSearched) && (
+                    <button
+                      type="button"
+                      onClick={handleResetSearch}
+                      title="Clear search inputs and reset results"
+                      className="py-2.5 px-3 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-200 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition active:scale-95 flex items-center gap-1.5 font-mono text-xs font-bold"
+                    >
+                      <RotateCcw className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                      <span className="hidden md:inline">Reset</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Advanced Filter Toggle & Popular Presets Row */}
               <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-zinc-100 dark:border-zinc-800">
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="text-[10px] font-mono uppercase text-zinc-400 font-bold mr-1">
+                  <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 font-bold mr-1">
                     Popular Routes:
                   </span>
                   {POPULAR_PAIRS.map((pair) => (
@@ -692,25 +760,37 @@ const MainApp: React.FC = () => {
 
               {/* Recent Searches */}
               {recentSearches.length > 0 && (
-                <div className="pt-1 flex flex-wrap items-center gap-1.5 text-xs border-t border-zinc-100 dark:border-zinc-800">
-                  <span className="text-[10px] font-mono uppercase text-zinc-400 font-bold mr-1 flex items-center gap-1">
-                    <History className="w-3 h-3" /> Recent:
-                  </span>
-                  {recentSearches.map((rec) => (
-                    <button
-                      key={`${rec.from.code}-${rec.to.code}-${rec.date}`}
-                      type="button"
-                      onClick={() => {
-                        setFromStation(rec.from);
-                        setToStation(rec.to);
-                        setJourneyDate(rec.date);
-                      }}
-                      className="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-[11px] font-mono transition flex items-center gap-1"
-                    >
-                      <span>{rec.from.code} → {rec.to.code}</span>
-                      <span className="text-[10px] text-zinc-400">({rec.date})</span>
-                    </button>
-                  ))}
+                <div className="pt-2 flex flex-wrap items-center justify-between gap-1.5 text-xs border-t border-zinc-100 dark:border-zinc-800/80">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 font-bold mr-1 flex items-center gap-1">
+                      <History className="w-3 h-3" /> Recent:
+                    </span>
+                    {recentSearches.map((rec) => (
+                      <button
+                        key={`${rec.from.code}-${rec.to.code}-${rec.date}`}
+                        type="button"
+                        onClick={() => {
+                          setFromStation(rec.from);
+                          setToStation(rec.to);
+                          setJourneyDate(rec.date);
+                        }}
+                        className="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-[11px] font-mono transition flex items-center gap-1 border border-transparent hover:border-zinc-300 dark:hover:border-zinc-600"
+                      >
+                        <span>{rec.from.code} → {rec.to.code}</span>
+                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">({rec.date})</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleClearRecentSearches}
+                    className="text-[10px] font-mono text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition flex items-center gap-1 py-0.5 px-1.5 rounded"
+                    title="Clear recent searches history"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Clear History</span>
+                  </button>
                 </div>
               )}
             </form>
@@ -727,47 +807,43 @@ const MainApp: React.FC = () => {
             />
           )}
 
-          {/* Real-time Search Progress Banner */}
+          {/* Real-time Search Progress & Animated Radar Pathfinder Loader */}
           {isSearching && (
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl p-4 flex items-center gap-3.5 shadow-xs animate-pulse">
-              <div className="w-5 h-5 border-2 border-zinc-950 dark:border-white border-t-transparent rounded-full animate-spin shrink-0" />
-              <div className="flex-1">
-                <div className="text-sm font-mono font-bold text-zinc-900 dark:text-white">
-                  {searchStatusText || 'Searching all railway corridors across India...'}
-                </div>
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">
-                  Analyzing direct trains, checking same-train split ticketing, and evaluating intermediate corridor hubs
-                </div>
-              </div>
-            </div>
+            <SearchingRadarLoader
+              originCode={fromStation?.code}
+              originName={fromStation?.name}
+              destCode={toStation?.code}
+              destName={toStation?.name}
+              statusText={searchStatusText}
+            />
           )}
 
           {/* Results Section */}
           {hasSearched && (
             <div className="space-y-4">
               {/* Results Header Summary Bar */}
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="glass-card bg-white/85 dark:bg-zinc-900/85 border border-zinc-200/90 dark:border-zinc-800/90 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                 <div className="flex flex-wrap items-center gap-3">
                   <div>
-                    <span className="text-[10px] font-mono uppercase text-zinc-400 block font-bold">
+                    <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 block font-bold">
                       Journey Corridor
                     </span>
-                    <span className="text-sm font-mono font-bold text-zinc-950 dark:text-white">
+                    <span className="text-sm font-mono font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
                       {fromStation?.code} ({fromStation?.name}) → {toStation?.code} ({toStation?.name})
                     </span>
                   </div>
-                  <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 hidden sm:block" />
+                  <div className="h-6 w-px bg-zinc-200 dark:border-zinc-800 hidden sm:block" />
                   <div>
-                    <span className="text-[10px] font-mono uppercase text-zinc-400 block font-bold">
+                    <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 block font-bold">
                       Evaluated
                     </span>
                     <span className="text-sm font-mono font-bold text-zinc-900 dark:text-zinc-100">
                       {totalEvaluated} routes
                     </span>
                   </div>
-                  <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 hidden sm:block" />
+                  <div className="h-6 w-px bg-zinc-200 dark:border-zinc-800 hidden sm:block" />
                   <div>
-                    <span className="text-[10px] font-mono uppercase text-zinc-400 block font-bold">
+                    <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 block font-bold">
                       Confirmed Options
                     </span>
                     <span className="text-sm font-mono font-bold text-zinc-950 dark:text-white">
@@ -776,9 +852,9 @@ const MainApp: React.FC = () => {
                   </div>
                   {lowestFare > 0 && (
                     <>
-                      <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 hidden sm:block" />
+                      <div className="h-6 w-px bg-zinc-200 dark:border-zinc-800 hidden sm:block" />
                       <div>
-                        <span className="text-[10px] font-mono uppercase text-zinc-400 block font-bold">
+                        <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 block font-bold">
                           Lowest Fare
                         </span>
                         <span className="text-sm font-mono font-bold text-zinc-950 dark:text-white">
@@ -789,52 +865,63 @@ const MainApp: React.FC = () => {
                   )}
                 </div>
 
-                {/* Quick Tab Filters */}
-                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg self-start md:self-auto">
+                {/* Quick Tab Filters & Reset Action */}
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                  <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('ALL')}
+                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                        activeTab === 'ALL'
+                          ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      All ({routes.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('CONFIRMED')}
+                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                        activeTab === 'CONFIRMED'
+                          ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Confirmed ({confirmedCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('HACKS')}
+                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition flex items-center gap-1 ${
+                        activeTab === 'HACKS'
+                          ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Zap className="w-3 h-3 text-amber-500" />
+                      Lifehacks
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('DIRECT')}
+                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                        activeTab === 'DIRECT'
+                          ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Direct Only
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setActiveTab('ALL')}
-                    className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
-                      activeTab === 'ALL'
-                        ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
-                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                    }`}
+                    onClick={handleResetSearch}
+                    className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-white text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition"
+                    title="Reset search and return to initial view"
                   >
-                    All ({routes.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('CONFIRMED')}
-                    className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
-                      activeTab === 'CONFIRMED'
-                        ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
-                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Confirmed ({confirmedCount})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('HACKS')}
-                    className={`px-3 py-1 rounded text-xs font-mono font-bold transition flex items-center gap-1 ${
-                      activeTab === 'HACKS'
-                        ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
-                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                    }`}
-                  >
-                    <Zap className="w-3 h-3 text-amber-500" />
-                    Lifehacks
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('DIRECT')}
-                    className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
-                      activeTab === 'DIRECT'
-                        ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
-                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Direct Only
+                    <RotateCcw className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -983,25 +1070,155 @@ const MainApp: React.FC = () => {
             </div>
           )}
 
-          {/* Initial Prompt State (before search) */}
+          {/* Initial Prompt & Discovery Showcase State (before search or after reset) */}
           {!hasSearched && (
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-8 sm:p-12 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto text-zinc-800 dark:text-zinc-200">
-                <Compass className="w-6 h-6 stroke-[1.5]" />
+            <div className="space-y-6 animate-slide-up">
+              {/* Popular Corridor Quick-Launch Cards */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-zinc-900 dark:text-zinc-100" />
+                    <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-900 dark:text-white">
+                      Popular High-Demand Corridors
+                    </h2>
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500">
+                    1-Click Instant Search
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {[
+                    {
+                      from: { code: 'NDLS', name: 'New Delhi', city: 'Delhi', state: 'Delhi' },
+                      to: { code: 'CSMT', name: 'Mumbai CSMT', city: 'Mumbai', state: 'Maharashtra' },
+                      tag: 'RAJDHANI / TEJAS',
+                      desc: 'Delhi ↔ Mumbai Superfast Corridor',
+                      via: 'Direct & Kota / Vadodara Splits',
+                    },
+                    {
+                      from: { code: 'JU', name: 'Jodhpur Jn', city: 'Jodhpur', state: 'Rajasthan' },
+                      to: { code: 'SBC', name: 'KSR Bengaluru', city: 'Bengaluru', state: 'Karnataka' },
+                      tag: 'SPLIT TICKET HUB',
+                      desc: 'Rajasthan ↔ South India Network',
+                      via: 'Merta & Ahmedabad Splits',
+                    },
+                    {
+                      from: { code: 'MAS', name: 'Chennai Central', city: 'Chennai', state: 'Tamil Nadu' },
+                      to: { code: 'SBC', name: 'KSR Bengaluru', city: 'Bengaluru', state: 'Karnataka' },
+                      tag: 'VANDE BHARAT',
+                      desc: 'High-Frequency Express Route',
+                      via: '4h 25m Speed Corridor',
+                    },
+                    {
+                      from: { code: 'ADI', name: 'Ahmedabad Jn', city: 'Ahmedabad', state: 'Gujarat' },
+                      to: { code: 'PUNE', name: 'Pune Jn', city: 'Pune', state: 'Maharashtra' },
+                      tag: 'DURONTO / SF',
+                      desc: 'Western Industrial Transit',
+                      via: 'Kalyan / Panvel Corridors',
+                    },
+                  ].map((corridor) => (
+                    <div
+                      key={`${corridor.from.code}-${corridor.to.code}`}
+                      className="glass-card bg-white/80 dark:bg-zinc-900/80 border border-zinc-200/90 dark:border-zinc-800/90 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-zinc-400 dark:hover:border-zinc-600 transition-all group"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700">
+                            {corridor.tag}
+                          </span>
+                          <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
+                            Daily Trains
+                          </span>
+                        </div>
+
+                        <div>
+                          <div className="font-mono font-bold text-base text-zinc-950 dark:text-white flex items-center gap-1.5">
+                            <span>{corridor.from.code}</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-zinc-400 group-hover:translate-x-0.5 transition-transform" />
+                            <span>{corridor.to.code}</span>
+                          </div>
+                          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 mt-0.5">
+                            {corridor.desc}
+                          </div>
+                          <div className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 mt-1">
+                            {corridor.via}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 mt-3 border-t border-zinc-100 dark:border-zinc-800/80">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFromStation(corridor.from);
+                            setToStation(corridor.to);
+                            executeSearch(corridor.from, corridor.to, journeyDate, quota);
+                          }}
+                          className="w-full py-1.5 px-3 rounded-lg bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 shadow-2xs"
+                        >
+                          <span>Explore Route</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div>
-                <h2 className="text-base sm:text-lg font-mono font-bold text-zinc-900 dark:text-white uppercase">
-                  Find Confirmed Berths Anywhere in India
-                </h2>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-lg mx-auto mt-1">
-                  When direct trains are waitlisted (WL) or closed (REGRET), IRCTC AGENT searches 1-transfer
-                  corridors, same-train split ticketing, and alternate boarding points with guaranteed layover safety.
-                </p>
+
+              {/* Pathfinder Features Showcase (3 Cards) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                <div className="glass-card bg-white/75 dark:bg-zinc-900/75 border border-zinc-200/80 dark:border-zinc-800/80 rounded-xl p-5 space-y-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-mono font-bold text-sm text-zinc-950 dark:text-white">
+                    Same-Train Split Berths
+                  </h3>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                    When end-to-end berths are Waitlisted (WL) or Regret, our algorithm scans intermediate quotas on the exact same train. Travel on the same coach with zero train changing required.
+                  </p>
+                </div>
+
+                <div className="glass-card bg-white/75 dark:bg-zinc-900/75 border border-zinc-200/80 dark:border-zinc-800/80 rounded-xl p-5 space-y-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
+                    <Target className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-mono font-bold text-sm text-zinc-950 dark:text-white">
+                    Origin Point-Beyond Lifehack
+                  </h3>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                    Bypass pooled waitlists (PQWL/RLWL) by booking from the train's originating station where General Quota (GN) pool is largest, setting your downstream station as the official boarding point.
+                  </p>
+                </div>
+
+                <div className="glass-card bg-white/75 dark:bg-zinc-900/75 border border-zinc-200/80 dark:border-zinc-800/80 rounded-xl p-5 space-y-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center shadow-xs">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-mono font-bold text-sm text-zinc-950 dark:text-white">
+                    1-Click Direct IRCTC Handoff
+                  </h3>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                    Pre-fills train number, journey date, boarding stations, and quota (General, Tatkal, Ladies, Senior Citizen) into official IRCTC NGET booking portal without manual re-typing.
+                  </p>
+                </div>
               </div>
-              <div className="pt-2">
-                <span className="text-[11px] font-mono text-zinc-400">
-                  Select your origin & destination above, or pick one of the popular routes to begin.
-                </span>
+
+              {/* IRCTC Tatkal Window & Master List Tip Box */}
+              <div className="glass-card bg-zinc-50/80 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
+                <div className="space-y-1">
+                  <div className="font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                    <span>Official Tatkal Timings Reference:</span>
+                  </div>
+                  <div className="text-zinc-600 dark:text-zinc-400">
+                    AC Classes (1A, 2A, 3A, 3E, CC) open daily at <strong>10:00 AM IST</strong> • Non-AC Classes (SL, 2S) open daily at <strong>11:00 AM IST</strong>.
+                  </div>
+                </div>
+                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 sm:text-right shrink-0">
+                  Tip: Save passenger details in IRCTC Master List prior to booking window.
+                </div>
               </div>
             </div>
           )}
