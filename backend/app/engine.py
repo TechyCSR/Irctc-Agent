@@ -1,0 +1,415 @@
+"""
+Universal Asynchronous Search Pipeline for Indian Railways.
+Provides both direct execution and real-time streaming (SSE) search with dynamic hub discovery.
+"""
+
+import asyncio
+import datetime
+import logging
+import re
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple
+
+from backend.app.client import AsyncTrainClient
+from backend.app.corridor import CorridorHub, select_corridor_hubs
+from backend.app.dedup import (
+    CleanItinerary,
+    NormalizedLeg,
+    deduplicate_direct_routes,
+    deduplicate_transfer_routes,
+)
+from backend.app.scorer import ItineraryScorer
+from backend.app.stations import (
+    CITY_CLUSTERS,
+    STATIONS_BY_CODE,
+    get_cluster_station_codes,
+)
+
+logger = logging.getLogger("IrctcAgent.Engine")
+
+
+def parse_duration_to_minutes(dur_str: str) -> int:
+    """Parse duration strings like '18h 45m', '8h', '45m' into integer minutes."""
+    if not dur_str:
+        return 0
+    hours = 0
+    minutes = 0
+    h_match = re.search(r"(\d+)\s*h", dur_str, re.IGNORECASE)
+    m_match = re.search(r"(\d+)\s*m", dur_str, re.IGNORECASE)
+    if h_match:
+        hours = int(h_match.group(1))
+    if m_match:
+        minutes = int(m_match.group(1))
+    if not h_match and not m_match:
+        colon_match = re.match(r"^(\d{1,2}):(\d{2})$", dur_str.strip())
+        if colon_match:
+            hours = int(colon_match.group(1))
+            minutes = int(colon_match.group(2))
+    return hours * 60 + minutes
+
+
+class PublicSearchEngine:
+    """
+    Universal search engine for any origin and destination pair across India.
+    """
+
+    def __init__(self, client: Optional[AsyncTrainClient] = None):
+        self.client = client or AsyncTrainClient()
+
+    async def search_direct_trains(
+        self,
+        origin_code: str,
+        dest_code: str,
+        doj: str,
+        quota: str = "GN"
+    ) -> List[CleanItinerary]:
+        """Searches direct trains between origin and destination clusters."""
+        origin_stations = get_cluster_station_codes(origin_code)
+        dest_stations = get_cluster_station_codes(dest_code)
+
+        tasks = []
+        for src in origin_stations:
+            for dst in dest_stations:
+                tasks.append(self.client.fetch_trains(src, dst, doj, quota))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        raw_directs: List[CleanItinerary] = []
+        for res in results:
+            if isinstance(res, Exception) or not res:
+                continue
+            for t in res:
+                dur_min = parse_duration_to_minutes(t["duration"])
+                try:
+                    dep_dt = datetime.datetime.strptime(f"{doj} {t['departure_time']}", "%d-%m-%Y %H:%M")
+                except Exception:
+                    continue
+                arr_dt = dep_dt + datetime.timedelta(minutes=dur_min)
+
+                leg = NormalizedLeg(
+                    train_number=t["train_number"],
+                    train_name=t["train_name"],
+                    from_station=t["from_station"],
+                    to_station=t["to_station"],
+                    dep_datetime=dep_dt,
+                    arr_datetime=arr_dt,
+                    duration_str=t["duration"],
+                    availability=t["availability"],
+                    fares_by_class=t["fares_by_class"],
+                )
+
+                best_fare = min(t["fares_by_class"].values()) if t["fares_by_class"] else 0
+                best_cls = min(t["fares_by_class"], key=t["fares_by_class"].get) if t["fares_by_class"] else "None"
+
+                itin = CleanItinerary(
+                    itinerary_id=f"DIR-{t['train_number']}-{doj}",
+                    route_type="DIRECT",
+                    origin=leg.from_station,
+                    destination=leg.to_station,
+                    transit_hub=None,
+                    corridor_name="Direct Line",
+                    is_detour=False,
+                    detour_ratio=1.0,
+                    legs=[leg],
+                    layover_minutes=0,
+                    total_duration_minutes=dur_min,
+                    transfer_type="Direct Journey",
+                    layover_risk="None",
+                    fares_by_class=t["fares_by_class"],
+                    best_fare=best_fare,
+                    best_fare_class=best_cls,
+                )
+                raw_directs.append(itin)
+
+        return deduplicate_direct_routes(raw_directs)
+
+    async def search_transfer_trains(
+        self,
+        origin_code: str,
+        dest_code: str,
+        doj: str,
+        quota: str = "GN",
+        corridor_hubs: Optional[List[CorridorHub]] = None
+    ) -> List[CleanItinerary]:
+        """Searches 1-transfer routes through dynamically selected junction hubs."""
+        if corridor_hubs is None:
+            corridor_hubs = select_corridor_hubs(origin_code, dest_code, max_hubs=6)
+
+        if not corridor_hubs:
+            return []
+
+        origin_stations = get_cluster_station_codes(origin_code)
+        dest_stations = get_cluster_station_codes(dest_code)
+
+        raw_transfers: List[CleanItinerary] = []
+
+        # Step A: Query Leg 1 (Origin Cluster -> Hubs) concurrently
+        leg1_tasks = []
+        for hub in corridor_hubs:
+            hub_stations = get_cluster_station_codes(hub.station_code)
+            for src in origin_stations:
+                for hstn in hub_stations:
+                    leg1_tasks.append((hub, self.client.fetch_trains(src, hstn, doj, quota)))
+
+        leg1_results = await asyncio.gather(*(task for _, task in leg1_tasks), return_exceptions=True)
+
+        # Map viable Leg 1 trains per hub
+        hub_viable_leg1: Dict[str, List[Tuple[CorridorHub, Dict[str, Any], datetime.datetime, datetime.datetime, int]]] = {}
+        for (hub, _), res in zip(leg1_tasks, leg1_results):
+            if isinstance(res, Exception) or not res:
+                continue
+            for t1 in res:
+                has_viable = any(
+                    c["is_available"] or c["is_rac"] or (c["is_waitlist"] and "Chance" in c.get("prediction", ""))
+                    for c in t1["availability"].values()
+                )
+                if not has_viable:
+                    continue
+
+                dur1 = parse_duration_to_minutes(t1["duration"])
+                try:
+                    dep1_dt = datetime.datetime.strptime(f"{doj} {t1['departure_time']}", "%d-%m-%Y %H:%M")
+                except Exception:
+                    continue
+                arr1_dt = dep1_dt + datetime.timedelta(minutes=dur1)
+
+                hub_key = hub.station_code
+                if hub_key not in hub_viable_leg1:
+                    hub_viable_leg1[hub_key] = []
+                hub_viable_leg1[hub_key].append((hub, t1, dep1_dt, arr1_dt, dur1))
+
+        # Step B: Concurrently query Leg 2 (Hubs -> Destination Cluster)
+        leg2_queries = set()
+        for hub_key, items in hub_viable_leg1.items():
+            for hub, t1, _, arr1_dt, _ in items:
+                hub_stations = get_cluster_station_codes(hub.station_code)
+                l2_dates = [arr1_dt.strftime("%d-%m-%Y"), (arr1_dt + datetime.timedelta(days=1)).strftime("%d-%m-%Y")]
+                for hstn in hub_stations:
+                    for dst in dest_stations:
+                        for l2_d in l2_dates:
+                            leg2_queries.add((hstn, dst, l2_d))
+
+        leg2_tasks = [
+            (q, self.client.fetch_trains(q[0], q[1], q[2], quota))
+            for q in leg2_queries
+        ]
+        leg2_results = await asyncio.gather(*(task for _, task in leg2_tasks), return_exceptions=True)
+
+        leg2_cache: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
+        for (q, _), res in zip(leg2_tasks, leg2_results):
+            if not isinstance(res, Exception) and res:
+                leg2_cache[q] = res
+
+        # Step C: Match connections
+        for hub_key, items in hub_viable_leg1.items():
+            for hub, t1, dep1_dt, arr1_dt, dur1 in items:
+                hub_stations = get_cluster_station_codes(hub.station_code)
+                l2_dates = [arr1_dt.strftime("%d-%m-%Y"), (arr1_dt + datetime.timedelta(days=1)).strftime("%d-%m-%Y")]
+
+                for hstn in hub_stations:
+                    for dst in dest_stations:
+                        for l2_d in l2_dates:
+                            t2_list = leg2_cache.get((hstn, dst, l2_d), [])
+                            for t2 in t2_list:
+                                has_viable_t2 = any(
+                                    c["is_available"] or c["is_rac"] or (c["is_waitlist"] and "Chance" in c.get("prediction", ""))
+                                    for c in t2["availability"].values()
+                                )
+                                if not has_viable_t2:
+                                    continue
+
+                                dur2 = parse_duration_to_minutes(t2["duration"])
+                                try:
+                                    dep2_dt = datetime.datetime.strptime(f"{t2['doj']} {t2['departure_time']}", "%d-%m-%Y %H:%M")
+                                except Exception:
+                                    continue
+                                arr2_dt = dep2_dt + datetime.timedelta(minutes=dur2)
+
+                                layover_min = int((dep2_dt - arr1_dt).total_seconds() / 60)
+
+                                same_station = (t1["to_station"] == t2["from_station"])
+                                if same_station:
+                                    if not (90 <= layover_min <= 540):
+                                        continue
+                                    transfer_type = f"Same Station Transfer ({t1['to_station']})"
+                                else:
+                                    if not (210 <= layover_min <= 660):
+                                        continue
+                                    transfer_type = f"Cross-City Transfer ({t1['to_station']} \u2192 {t2['from_station']})"
+
+                                if layover_min < 120:
+                                    layover_risk = "Tight Layover (<2 hrs)"
+                                elif layover_min > 420:
+                                    layover_risk = "Long Layover (>7 hrs)"
+                                else:
+                                    layover_risk = "Comfortable Layover"
+
+                                # Fares
+                                combined_fares = {}
+                                for cls in ["3A", "2A", "SL", "3E", "1A", "CC"]:
+                                    f1 = t1["fares_by_class"].get(cls, 0)
+                                    f2 = t2["fares_by_class"].get(cls, 0)
+                                    if f1 > 0 and f2 > 0:
+                                        combined_fares[cls] = f1 + f2
+
+                                best_fare = min(combined_fares.values()) if combined_fares else (
+                                    (min(t1["fares_by_class"].values()) if t1["fares_by_class"] else 0) +
+                                    (min(t2["fares_by_class"].values()) if t2["fares_by_class"] else 0)
+                                )
+                                best_fare_class = min(combined_fares, key=combined_fares.get) if combined_fares else "Mixed"
+
+                                leg1 = NormalizedLeg(
+                                    train_number=t1["train_number"],
+                                    train_name=t1["train_name"],
+                                    from_station=t1["from_station"],
+                                    to_station=t1["to_station"],
+                                    dep_datetime=dep1_dt,
+                                    arr_datetime=arr1_dt,
+                                    duration_str=t1["duration"],
+                                    availability=t1["availability"],
+                                    fares_by_class=t1["fares_by_class"],
+                                )
+                                leg2 = NormalizedLeg(
+                                    train_number=t2["train_number"],
+                                    train_name=t2["train_name"],
+                                    from_station=t2["from_station"],
+                                    to_station=t2["to_station"],
+                                    dep_datetime=dep2_dt,
+                                    arr_datetime=arr2_dt,
+                                    duration_str=t2["duration"],
+                                    availability=t2["availability"],
+                                    fares_by_class=t2["fares_by_class"],
+                                )
+
+                                itin = CleanItinerary(
+                                    itinerary_id=f"CONN-{hub.station_code}-{t1['train_number']}-{t2['train_number']}",
+                                    route_type="1_TRANSFER",
+                                    origin=leg1.from_station,
+                                    destination=leg2.to_station,
+                                    transit_hub=hub.station_code,
+                                    corridor_name=f"{hub.city} ({hub.station_code}) Corridor",
+                                    is_detour=hub.is_detour,
+                                    detour_ratio=hub.detour_ratio,
+                                    legs=[leg1, leg2],
+                                    layover_minutes=layover_min,
+                                    total_duration_minutes=dur1 + layover_min + dur2,
+                                    transfer_type=transfer_type,
+                                    layover_risk=layover_risk,
+                                    fares_by_class=combined_fares,
+                                    best_fare=best_fare,
+                                    best_fare_class=best_fare_class,
+                                )
+                                raw_transfers.append(itin)
+
+        return deduplicate_transfer_routes(raw_transfers)
+
+    async def search_all(
+        self,
+        origin_code: str,
+        dest_code: str,
+        doj: str,
+        quota: str = "GN",
+        preferred_class: Optional[str] = None
+    ) -> List[CleanItinerary]:
+        """Executes full search and returns scored, deduplicated itineraries."""
+        corridor_hubs = select_corridor_hubs(origin_code, dest_code, max_hubs=6)
+
+        direct_task = self.search_direct_trains(origin_code, dest_code, doj, quota)
+        transfer_task = self.search_transfer_trains(origin_code, dest_code, doj, quota, corridor_hubs)
+
+        directs, transfers = await asyncio.gather(direct_task, transfer_task)
+        combined = directs + transfers
+        return ItineraryScorer.rank_itineraries(combined, preferred_class)
+
+    async def stream_search(
+        self,
+        origin_code: str,
+        dest_code: str,
+        doj: str,
+        quota: str = "GN"
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Progressive streaming generator emitting Server-Sent Events (SSE).
+        Yields direct trains immediately, then corridor updates as they are found.
+        """
+        corridor_hubs = select_corridor_hubs(origin_code, dest_code, max_hubs=6)
+
+        yield {
+            "type": "init",
+            "origin": origin_code.upper(),
+            "destination": dest_code.upper(),
+            "date": doj,
+            "corridor_hubs": [
+                {"code": h.station_code, "name": h.station_name, "city": h.city, "detour": h.detour_ratio}
+                for h in corridor_hubs
+            ]
+        }
+
+        # Step 1: Direct Trains Immediate Emission (<0.5s)
+        directs = await self.search_direct_trains(origin_code, dest_code, doj, quota)
+        scored_directs = ItineraryScorer.rank_itineraries(directs)
+        yield {
+            "type": "direct_trains",
+            "count": len(scored_directs),
+            "routes": [self._serialize_itin(it) for it in scored_directs]
+        }
+
+        # Step 2: Search connecting hubs and emit
+        transfers = await self.search_transfer_trains(origin_code, dest_code, doj, quota, corridor_hubs)
+        all_itins = directs + transfers
+        ranked = ItineraryScorer.rank_itineraries(all_itins)
+
+        confirmed_count = sum(1 for it in ranked if it.booking_confidence == "CONFIRMED")
+        lowest_fare = min((it.best_fare for it in ranked if it.best_fare > 0), default=0)
+
+        yield {
+            "type": "complete",
+            "total_evaluated": len(ranked),
+            "confirmed_count": confirmed_count,
+            "lowest_fare": lowest_fare,
+            "routes": [self._serialize_itin(it) for it in ranked[:80]]
+        }
+
+    def _serialize_itin(self, it: CleanItinerary) -> Dict[str, Any]:
+        return {
+            "id": it.itinerary_id,
+            "rank": it.recommendation_rank,
+            "score": it.score,
+            "type": it.route_type,
+            "origin": it.origin,
+            "destination": it.destination,
+            "hub": it.transit_hub or "Direct",
+            "corridor": it.corridor_name,
+            "is_detour": it.is_detour,
+            "detour_ratio": it.detour_ratio,
+            "transfer_type": it.transfer_type,
+            "layover_risk": it.layover_risk,
+            "layover_minutes": it.layover_minutes,
+            "layover_str": it.layover_str,
+            "total_duration_minutes": it.total_duration_minutes,
+            "total_duration_str": it.total_duration_str,
+            "best_fare": it.best_fare,
+            "best_fare_class": it.best_fare_class,
+            "fares_by_class": it.fares_by_class,
+            "booking_confidence": it.booking_confidence,
+            "summary": it.status_summary,
+            "legs": [
+                {
+                    "train_no": l.train_number,
+                    "train_name": l.train_name,
+                    "from": l.from_station,
+                    "to": l.to_station,
+                    "departure": l.dep_formatted,
+                    "arrival": l.arr_formatted,
+                    "duration": l.duration_str,
+                    "alt_from": l.alt_from_stations,
+                    "alt_to": l.alt_to_stations,
+                    "seats": {
+                        cls: cinfo["raw_status"]
+                        for cls, cinfo in l.availability.items()
+                        if cinfo.get("raw_status")
+                    },
+                    "fares": l.fares_by_class
+                }
+                for l in it.legs
+            ]
+        }
