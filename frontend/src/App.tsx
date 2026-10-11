@@ -73,20 +73,44 @@ function getTomorrowDateStr(): string {
   return d.toISOString().split('T')[0];
 }
 
-function formatDateToDDMMYYYY(isoDate: string): string {
-  const parts = isoDate.split('-');
+const TODAY_ISO = new Date().toISOString().split('T')[0];
+
+function formatDateToDDMMYYYY(dateStr: string): string {
+  if (!dateStr) return '';
+  const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const separator = clean.includes('-') ? '-' : clean.includes('/') ? '/' : '';
+  if (!separator) return clean;
+  const parts = clean.split(separator);
   if (parts.length === 3) {
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD -> DD-MM-YYYY
+      return `${parts[2].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[0]}`;
+    }
+    if (parts[2].length === 4) {
+      // Already DD-MM-YYYY
+      return `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2]}`;
+    }
   }
-  return isoDate;
+  return clean;
 }
 
 function formatDDMMYYYYToISO(dateStr: string): string {
-  const parts = dateStr.split('-');
+  if (!dateStr) return '';
+  const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const separator = clean.includes('-') ? '-' : clean.includes('/') ? '/' : '';
+  if (!separator) return clean;
+  const parts = clean.split(separator);
   if (parts.length === 3) {
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    if (parts[2].length === 4) {
+      // DD-MM-YYYY -> YYYY-MM-DD
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    if (parts[0].length === 4) {
+      // Already YYYY-MM-DD
+      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    }
   }
-  return dateStr;
+  return clean;
 }
 
 const MainApp: React.FC = () => {
@@ -206,20 +230,22 @@ const MainApp: React.FC = () => {
   }, []);
 
   // Save recent search
-  const saveRecentSearch = (from: StationItem, to: StationItem, date: string) => {
-    try {
+  const saveRecentSearch = useCallback((from: StationItem, to: StationItem, date: string) => {
+    setRecentSearches((prev) => {
       const updated = [
         { from, to, date },
-        ...recentSearches.filter(
+        ...prev.filter(
           (s) => !(s.from.code === from.code && s.to.code === to.code)
         ),
       ].slice(0, 5);
-      setRecentSearches(updated);
-      localStorage.setItem('irctc_agent_recent_searches', JSON.stringify(updated));
-    } catch {
-      // Ignore storage errors
-    }
-  };
+      try {
+        localStorage.setItem('irctc_agent_recent_searches', JSON.stringify(updated));
+      } catch {
+        // Ignore storage errors
+      }
+      return updated;
+    });
+  }, []);
 
   // Swap Stations
   const handleSwap = () => {
@@ -291,7 +317,7 @@ const MainApp: React.FC = () => {
         setSearchStatusText('');
       }
     },
-    [classFilter, showToast]
+    [classFilter, showToast, saveRecentSearch]
   );
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
@@ -519,7 +545,7 @@ const MainApp: React.FC = () => {
                   <input
                     type="date"
                     value={journeyDate}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={TODAY_ISO}
                     onChange={(e) => setJourneyDate(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
                   />

@@ -24,9 +24,17 @@ export const DateStripSelector: React.FC<DateStripSelectorProps> = ({
   useEffect(() => {
     if (!fromCode || !toCode || !selectedDate) return;
 
-    // Convert YYYY-MM-DD to DD-MM-YYYY
-    const [y, m, d] = selectedDate.split('-');
-    const formattedStart = `${d}-${m}-${y}`;
+    // Convert to DD-MM-YYYY safely
+    const clean = selectedDate.trim().replace(/\//g, '-');
+    const parts = clean.split('-');
+    let formattedStart = clean;
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        formattedStart = `${parts[2].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[0]}`;
+      } else if (parts[2].length === 4) {
+        formattedStart = `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2]}`;
+      }
+    }
 
     setIsLoading(true);
     getMultiDateAvailability(fromCode, toCode, formattedStart, 5, quota)
@@ -44,15 +52,15 @@ export const DateStripSelector: React.FC<DateStripSelectorProps> = ({
   if (!fromCode || !toCode) return null;
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl p-3 shadow-xs">
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 shadow-xs">
       <div className="flex items-center justify-between mb-2 px-1">
-        <span className="text-[10px] font-mono uppercase text-zinc-400 font-bold flex items-center gap-1.5">
-          <Calendar className="w-3 h-3 text-zinc-950" />
+        <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 font-bold flex items-center gap-1.5">
+          <Calendar className="w-3 h-3 text-zinc-950 dark:text-zinc-100" />
           5-Day Availability Matrix (Direct & Corridor Trains)
         </span>
         {isLoading && (
           <span className="text-[10px] font-mono text-zinc-400 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-zinc-950 animate-ping" />
+            <span className="w-2 h-2 rounded-full bg-zinc-950 dark:bg-white animate-ping" />
             Updating dates...
           </span>
         )}
@@ -71,14 +79,14 @@ export const DateStripSelector: React.FC<DateStripSelectorProps> = ({
               onClick={() => onSelectDate(item.iso_date)}
               className={`p-2.5 rounded-lg border text-left transition-all relative ${
                 isSelected
-                  ? 'border-zinc-950 bg-zinc-950 text-white shadow-xs'
-                  : 'border-zinc-200 bg-zinc-50/50 hover:bg-zinc-100/70 text-zinc-900'
+                  ? 'border-zinc-950 dark:border-white bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-xs'
+                  : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 hover:bg-zinc-100/70 dark:hover:bg-zinc-800 text-zinc-900 dark:text-zinc-100'
               }`}
             >
               <div className="flex items-baseline justify-between">
                 <span
                   className={`text-[11px] font-mono font-bold uppercase ${
-                    isSelected ? 'text-zinc-300' : 'text-zinc-500'
+                    isSelected ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-500 dark:text-zinc-400'
                   }`}
                 >
                   {item.day_name}
@@ -93,8 +101,8 @@ export const DateStripSelector: React.FC<DateStripSelectorProps> = ({
                   <span
                     className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
                       isSelected
-                        ? 'bg-white text-zinc-950'
-                        : 'bg-zinc-900 text-white'
+                        ? 'bg-white dark:bg-zinc-950 text-zinc-950 dark:text-white'
+                        : 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
                     }`}
                   >
                     ✓ {item.confirmed_trains} Confirmed
@@ -103,18 +111,14 @@ export const DateStripSelector: React.FC<DateStripSelectorProps> = ({
                   <span
                     className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${
                       isSelected
-                        ? 'border border-zinc-400 text-white'
-                        : 'border border-zinc-400 text-zinc-800'
+                        ? 'border border-zinc-400 text-white dark:text-zinc-950'
+                        : 'border border-zinc-400 text-zinc-800 dark:text-zinc-200'
                     }`}
                   >
                     RAC Boarding
                   </span>
                 ) : (
-                  <span
-                    className={`text-[10px] font-mono ${
-                      isSelected ? 'text-zinc-400' : 'text-zinc-400'
-                    }`}
-                  >
+                  <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
                     WL / Alternate
                   </span>
                 )}
@@ -123,7 +127,7 @@ export const DateStripSelector: React.FC<DateStripSelectorProps> = ({
               {item.lowest_fare > 0 && (
                 <div
                   className={`text-[10px] font-mono mt-1 ${
-                    isSelected ? 'text-zinc-300' : 'text-zinc-500'
+                    isSelected ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-500 dark:text-zinc-400'
                   }`}
                 >
                   From ₹{item.lowest_fare}

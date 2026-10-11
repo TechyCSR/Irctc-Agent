@@ -55,27 +55,27 @@ export const TrainScheduleModal: React.FC<TrainScheduleModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/60 backdrop-blur-xs">
-      <div className="bg-white border border-zinc-200 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up">
+      <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+        <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-mono font-bold text-sm bg-zinc-950 text-white px-2 py-0.5 rounded">
+              <span className="font-mono font-bold text-sm bg-zinc-950 dark:bg-zinc-100 text-white dark:text-zinc-950 px-2 py-0.5 rounded">
                 #{trainNo}
               </span>
-              <h2 className="text-base font-bold text-zinc-950">
+              <h2 className="text-base font-bold text-zinc-950 dark:text-white">
                 {schedule?.train_name || trainName}
               </h2>
             </div>
             {schedule && (
-              <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-zinc-500 mt-1">
+              <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-zinc-500 dark:text-zinc-400 mt-1">
                 <span>{schedule.source} → {schedule.destination}</span>
                 <span>&bull;</span>
                 <span>{schedule.total_duration}</span>
                 {schedule.has_pantry && (
                   <>
                     <span>&bull;</span>
-                    <span className="inline-flex items-center gap-1 text-zinc-800 font-semibold">
+                    <span className="inline-flex items-center gap-1 text-zinc-800 dark:text-zinc-200 font-semibold">
                       <UtensilsCrossed className="w-3 h-3" /> Pantry Available
                     </span>
                   </>
@@ -83,8 +83,8 @@ export const TrainScheduleModal: React.FC<TrainScheduleModalProps> = ({
                 {schedule.punctuality_rating && (
                   <>
                     <span>&bull;</span>
-                    <span className="inline-flex items-center gap-1 text-zinc-800 font-semibold">
-                      <Star className="w-3 h-3 fill-zinc-900 text-zinc-900" />
+                    <span className="inline-flex items-center gap-1 text-zinc-800 dark:text-zinc-200 font-semibold">
+                      <Star className="w-3 h-3 fill-zinc-900 dark:fill-zinc-100 text-zinc-900 dark:text-zinc-100" />
                       {schedule.punctuality_rating}/5.0 Punctuality
                     </span>
                   </>
@@ -96,22 +96,22 @@ export const TrainScheduleModal: React.FC<TrainScheduleModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg border border-zinc-200 hover:border-zinc-900 text-zinc-400 hover:text-zinc-900 transition"
+            className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-200 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Filter Input */}
-        <div className="px-5 py-2.5 border-b border-zinc-100 bg-white">
+        <div className="px-5 py-2.5 border-b border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-950">
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               placeholder="Search station stops or codes..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 border border-zinc-200 rounded-lg text-xs font-mono text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:border-zinc-950"
+              className="w-full pl-9 pr-3 py-1.5 border border-zinc-200 dark:border-zinc-800 rounded-lg text-xs font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-900 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:border-zinc-950 dark:focus:border-zinc-100"
             />
           </div>
         </div>
@@ -120,22 +120,22 @@ export const TrainScheduleModal: React.FC<TrainScheduleModalProps> = ({
         <div className="flex-1 overflow-y-auto p-5">
           {isLoading ? (
             <div className="py-12 flex flex-col items-center justify-center space-y-3">
-              <div className="w-6 h-6 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs font-mono text-zinc-500">Loading route schedule and platform data...</p>
+              <div className="w-6 h-6 border-2 border-zinc-950 dark:border-white border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">Loading route schedule and platform data...</p>
             </div>
           ) : error ? (
-            <div className="py-12 text-center text-xs font-mono text-zinc-500 space-y-2">
+            <div className="py-12 text-center text-xs font-mono text-zinc-500 dark:text-zinc-400 space-y-2">
               <p>{error}</p>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1 bg-zinc-950 text-white rounded text-xs"
+                className="px-3 py-1 bg-zinc-950 dark:bg-zinc-100 text-white dark:text-zinc-950 rounded text-xs"
               >
                 Close
               </button>
             </div>
           ) : (
-            <div className="space-y-0 relative before:absolute before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-zinc-200">
+            <div className="space-y-0 relative before:absolute before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-zinc-200 dark:before:bg-zinc-800">
               {filteredStops.map((stop, idx) => {
                 const isBoarding = stop.code === boardingCode;
                 const isAlighting = stop.code === alightingCode;
@@ -145,15 +145,17 @@ export const TrainScheduleModal: React.FC<TrainScheduleModalProps> = ({
                   <div
                     key={`${stop.code}-${idx}`}
                     className={`relative flex items-start gap-4 py-3 pl-8 rounded-lg transition-colors ${
-                      isHighlighted ? 'bg-zinc-100/80' : 'hover:bg-zinc-50'
+                      isHighlighted
+                        ? 'bg-zinc-100/80 dark:bg-zinc-900/80'
+                        : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/50'
                     }`}
                   >
                     {/* Timeline Node */}
                     <div
                       className={`absolute left-2.5 top-4 w-2.5 h-2.5 rounded-full -translate-x-1/2 transition-all ${
                         isHighlighted
-                          ? 'bg-zinc-950 ring-4 ring-zinc-300'
-                          : 'bg-zinc-400'
+                          ? 'bg-zinc-950 dark:bg-zinc-100 ring-4 ring-zinc-300 dark:ring-zinc-700'
+                          : 'bg-zinc-400 dark:bg-zinc-600'
                       }`}
                     />
 
@@ -161,24 +163,24 @@ export const TrainScheduleModal: React.FC<TrainScheduleModalProps> = ({
                     <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-zinc-900 text-sm">
+                          <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100 text-sm">
                             {stop.name}
                           </span>
-                          <span className="font-mono text-[11px] text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded">
+                          <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">
                             {stop.code}
                           </span>
                           {isBoarding && (
-                            <span className="font-mono text-[10px] font-bold bg-zinc-900 text-white px-2 py-0.5 rounded-full">
+                            <span className="font-mono text-[10px] font-bold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 px-2 py-0.5 rounded-full">
                               YOUR BOARDING
                             </span>
                           )}
                           {isAlighting && (
-                            <span className="font-mono text-[10px] font-bold bg-zinc-900 text-white px-2 py-0.5 rounded-full">
+                            <span className="font-mono text-[10px] font-bold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 px-2 py-0.5 rounded-full">
                               YOUR DESTINATION
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] font-mono text-zinc-400 mt-0.5">
+                        <div className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 mt-0.5">
                           {stop.distance_km} km &bull; Day {stop.day}
                         </div>
                       </div>
@@ -186,19 +188,19 @@ export const TrainScheduleModal: React.FC<TrainScheduleModalProps> = ({
                       {/* Timings & Platform */}
                       <div className="flex items-center gap-3 sm:text-right font-mono self-start sm:self-auto">
                         <div>
-                          <div className="text-zinc-900 font-bold">
+                          <div className="text-zinc-900 dark:text-zinc-100 font-bold">
                             {stop.arrival && stop.arrival !== '--:--' ? stop.arrival : 'Origin'} →{' '}
                             {stop.departure && stop.departure !== '--:--' ? stop.departure : 'Terminus'}
                           </div>
                           {stop.halt && (
-                            <div className="text-[10px] text-zinc-500 flex items-center sm:justify-end gap-1">
+                            <div className="text-[10px] text-zinc-500 dark:text-zinc-400 flex items-center sm:justify-end gap-1">
                               <Clock className="w-2.5 h-2.5" /> {stop.halt}
                             </div>
                           )}
                         </div>
 
                         {stop.platform && (
-                          <span className="font-mono text-xs font-bold px-2 py-1 bg-zinc-950 text-white rounded">
+                          <span className="font-mono text-xs font-bold px-2 py-1 bg-zinc-950 dark:bg-zinc-100 text-white dark:text-zinc-950 rounded">
                             PF {stop.platform}
                           </span>
                         )}
@@ -212,11 +214,11 @@ export const TrainScheduleModal: React.FC<TrainScheduleModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-zinc-100 bg-zinc-50/50 flex justify-end">
+        <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-mono text-xs font-bold transition"
+            className="px-4 py-1.5 rounded-lg bg-zinc-950 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-mono text-xs font-bold transition"
           >
             Close Schedule
           </button>

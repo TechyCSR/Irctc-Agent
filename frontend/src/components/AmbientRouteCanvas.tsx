@@ -9,7 +9,10 @@ interface AmbientRouteCanvasProps {
 export const AmbientRouteCanvas: React.FC<AmbientRouteCanvasProps> = ({ className = '', isSearching = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isSearchingRef = useRef(isSearching);
-  isSearchingRef.current = isSearching;
+
+  useEffect(() => {
+    isSearchingRef.current = isSearching;
+  }, [isSearching]);
 
   useEffect(() => {
     const container = containerRef.current;
