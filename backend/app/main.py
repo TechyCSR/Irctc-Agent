@@ -8,16 +8,28 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from datetime import datetime, timedelta
 from typing import Optional
+
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_backend_dir = os.path.dirname(_current_dir)
+_root_dir = os.path.dirname(_backend_dir)
+for p in [_root_dir, _backend_dir, _current_dir]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.app.engine import PublicSearchEngine
-from backend.app.stations import STATIONS_DATA, search_stations
+try:
+    from backend.app.engine import PublicSearchEngine
+    from backend.app.stations import STATIONS_DATA, search_stations
+except ImportError:
+    from app.engine import PublicSearchEngine
+    from app.stations import STATIONS_DATA, search_stations
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("IrctcAgent.API")

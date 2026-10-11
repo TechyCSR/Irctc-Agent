@@ -21,5 +21,5 @@ COPY backend /app/backend
 
 EXPOSE 8000
 
-# Run with uvicorn
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run with uvicorn respecting Catalyst AppSail listen port
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-8000}"]
