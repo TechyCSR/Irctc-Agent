@@ -1,0 +1,8 @@
+{
+  "appsail": [
+    {
+      "name": "irctc-agent-backend",
+      "source": "backend"
+    }
+  ]
+}
