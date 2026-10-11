@@ -5,16 +5,19 @@ import {
   AlertCircle,
   ExternalLink,
   Copy,
-  Check
+  Check,
+  MapPin,
+  Car
 } from 'lucide-react';
 import type { RouteItinerary } from '../types';
 import { useToast } from './Toast';
 
 interface ItineraryCardProps {
   itinerary: RouteItinerary;
+  onOpenSchedule?: (trainNo: string, trainName: string, boarding: string, alighting: string) => void;
 }
 
-export const ItineraryCard: React.FC<ItineraryCardProps> = ({ itinerary }) => {
+export const ItineraryCard: React.FC<ItineraryCardProps> = ({ itinerary, onOpenSchedule }) => {
   const [copied, setCopied] = useState(false);
   const { showToast } = useToast();
 
@@ -27,8 +30,8 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({ itinerary }) => {
   const handleCopy = () => {
     const text = `IRCTC AGENT — Route Option #${itinerary.rank} (${itinerary.type === 'DIRECT' ? 'Direct' : 'via ' + itinerary.hub}):
 Leg 1: ${leg1.train_no} ${leg1.train_name} (${leg1.from} ${leg1.departure} → ${leg1.to} ${leg1.arrival})
-${leg2 ? `Transfer: ${itinerary.layover_str} layover at ${itinerary.hub} (${itinerary.transfer_type})\nLeg 2: ${leg2.train_no} ${leg2.train_name} (${leg2.from} ${leg2.departure} → ${leg2.to} ${leg2.arrival})\n` : ''}Total Travel: ${itinerary.total_duration_str} | Combined Fare: ₹${itinerary.best_fare} (${itinerary.best_fare_class})
-Status: ${itinerary.booking_confidence}`;
+${leg2 ? `Transfer: ${itinerary.layover_str} layover at ${itinerary.hub} (${itinerary.transfer_type})${itinerary.inter_station_transfer ? ` [Inter-station: ${leg1.to} -> ${leg2.from}, ~${itinerary.hub_distance_km}km, ~${itinerary.recommended_cab_mins}m cab]` : ''}\nLeg 2: ${leg2.train_no} ${leg2.train_name} (${leg2.from} ${leg2.departure} → ${leg2.to} ${leg2.arrival})\n` : ''}Total Travel: ${itinerary.total_duration_str} | Combined Fare: ₹${itinerary.best_fare} (${itinerary.best_fare_class})
+Status: ${itinerary.booking_confidence} (${itinerary.confirmation_probability || 95}% probability)`;
     
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -60,6 +63,9 @@ Status: ${itinerary.booking_confidence}`;
     );
   };
 
+  // Build direct IRCTC link with pre-filled station codes
+  const irctcBookingUrl = `https://www.irctc.co.in/nget/train-search`;
+
   return (
     <div className="bg-white border border-zinc-200 rounded-xl p-5 shadow-xs hover:border-zinc-400 transition-all">
       {/* Header Bar */}
@@ -75,7 +81,7 @@ Status: ${itinerary.booking_confidence}`;
             {itinerary.type === 'DIRECT' ? 'Direct Train' : `1-Transfer • Via ${itinerary.hub}`}
           </span>
 
-          {/* Booking Confidence */}
+          {/* Booking Confidence & Probability */}
           {isConfirmed && (
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-zinc-900 text-white">
               <ShieldCheck className="w-3.5 h-3.5 mr-1 text-zinc-300" />
@@ -86,6 +92,12 @@ Status: ${itinerary.booking_confidence}`;
           {isRac && (
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold border border-zinc-900 text-zinc-900 bg-zinc-100">
               RAC GUARANTEED
+            </span>
+          )}
+
+          {itinerary.confirmation_probability && itinerary.confirmation_probability < 100 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono border border-zinc-800 text-zinc-800">
+              {itinerary.confirmation_probability}% Probability
             </span>
           )}
 
@@ -139,7 +151,20 @@ Status: ${itinerary.booking_confidence}`;
               <span className="text-sm font-semibold text-zinc-900">
                 {leg1.train_name}
               </span>
+
+              {/* View Schedule Button */}
+              {onOpenSchedule && (
+                <button
+                  type="button"
+                  onClick={() => onOpenSchedule(leg1.train_no, leg1.train_name, leg1.from, leg1.to)}
+                  className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold text-zinc-600 hover:text-zinc-950 underline underline-offset-2 ml-2 transition"
+                >
+                  <MapPin className="w-3 h-3" />
+                  Stops & Platforms
+                </button>
+              )}
             </div>
+
             <span className="text-xs font-mono text-zinc-500">
               Duration: <strong className="text-zinc-800">{leg1.duration}</strong>
             </span>
@@ -176,18 +201,38 @@ Status: ${itinerary.booking_confidence}`;
           </div>
         </div>
 
-        {/* Layover connector if 1-transfer */}
+        {/* Layover Connector Banner */}
         {leg2 && (
-          <div className="flex items-center justify-center my-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-zinc-300 text-xs font-mono text-zinc-800 shadow-2xs">
-              <Clock className="w-3.5 h-3.5 text-zinc-500" />
-              <span>
-                <strong className="font-bold">{itinerary.layover_str}</strong> layover at{' '}
-                <strong className="font-bold">{itinerary.hub}</strong>
-              </span>
-              <span className="text-zinc-300">&bull;</span>
-              <span className="text-zinc-600">{itinerary.transfer_type}</span>
+          <div className="my-1 space-y-1.5">
+            {/* Same Station or Cross-City Layover */}
+            <div className="flex items-center justify-center">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-zinc-300 text-xs font-mono text-zinc-800 shadow-2xs">
+                <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                <span>
+                  <strong className="font-bold">{itinerary.layover_str}</strong> layover at{' '}
+                  <strong className="font-bold">{itinerary.hub}</strong>
+                </span>
+                <span className="text-zinc-300">&bull;</span>
+                <span className="text-zinc-700 font-medium">
+                  {itinerary.inter_station_transfer ? 'Station Change in Hub' : 'Same Station Transfer'}
+                </span>
+              </div>
             </div>
+
+            {/* Inter-Station Transfer Warning Box */}
+            {itinerary.inter_station_transfer && (
+              <div className="flex items-center justify-between p-2.5 rounded-lg border border-zinc-900 bg-zinc-100 text-zinc-900 text-xs font-mono">
+                <div className="flex items-center gap-2">
+                  <Car className="w-4 h-4 text-zinc-900 shrink-0" />
+                  <span>
+                    <strong>Transit Alert:</strong> Arrive at <strong>{leg1.to}</strong> &bull; Depart from <strong>{leg2.from}</strong> (~{itinerary.hub_distance_km} km &bull; ~{itinerary.recommended_cab_mins}m cab)
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold uppercase bg-zinc-950 text-white px-2 py-0.5 rounded shrink-0">
+                  CAB REQUIRED
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -205,7 +250,20 @@ Status: ${itinerary.booking_confidence}`;
                 <span className="text-sm font-semibold text-zinc-900">
                   {leg2.train_name}
                 </span>
+
+                {/* View Schedule Button */}
+                {onOpenSchedule && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenSchedule(leg2.train_no, leg2.train_name, leg2.from, leg2.to)}
+                    className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold text-zinc-600 hover:text-zinc-950 underline underline-offset-2 ml-2 transition"
+                  >
+                    <MapPin className="w-3 h-3" />
+                    Stops & Platforms
+                  </button>
+                )}
               </div>
+
               <span className="text-xs font-mono text-zinc-500">
                 Duration: <strong className="text-zinc-800">{leg2.duration}</strong>
               </span>
@@ -273,7 +331,7 @@ Status: ${itinerary.booking_confidence}`;
           </button>
 
           <a
-            href="https://www.irctc.co.in/nget/train-search"
+            href={irctcBookingUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-zinc-950 text-white hover:bg-zinc-800 transition shadow-xs"
