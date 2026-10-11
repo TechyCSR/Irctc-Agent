@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://irctc-agent-backend-50046493714.development.catalystappsail.in/api/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
