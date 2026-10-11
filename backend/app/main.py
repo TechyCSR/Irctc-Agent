@@ -29,11 +29,13 @@ try:
     from backend.app.stations import STATIONS_DATA, search_stations
     from backend.app.cache import search_cache, schedule_cache, multidate_cache
     from backend.app.watchdog import watchdog_manager, calculate_charting_status
+    from backend.app.rail_metadata import ALL_QUOTAS, TRAIN_CATEGORIES, calculate_fare_breakdown
 except ImportError:
     from app.engine import PublicSearchEngine
     from app.stations import STATIONS_DATA, search_stations
     from app.cache import search_cache, schedule_cache, multidate_cache
     from app.watchdog import watchdog_manager, calculate_charting_status
+    from app.rail_metadata import ALL_QUOTAS, TRAIN_CATEGORIES, calculate_fare_breakdown
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("IrctcAgent.API")
@@ -340,6 +342,27 @@ async def list_watchdogs():
 async def delete_watchdog(alert_id: str):
     """Removes an active seat watchdog alert."""
     return {"success": watchdog_manager.remove_alert(alert_id)}
+
+
+@app.get("/api/quotas")
+async def get_all_quotas():
+    """Returns all 8 supported Indian Railways quotas and booking rules."""
+    return {"quotas": list(ALL_QUOTAS.values())}
+
+
+@app.get("/api/trains/categories")
+async def get_train_categories():
+    """Returns available train type filters."""
+    return {"categories": TRAIN_CATEGORIES}
+
+
+@app.get("/api/fares/breakdown")
+async def get_fare_breakdown(
+    fare: int = Query(..., description="Total fare amount in INR"),
+    travel_class: str = Query("3A", alias="class", description="Class code e.g. 3A, 2A, SL")
+):
+    """Calculates official IRCTC fare breakdown (base fare, reservation fee, superfast, GST)."""
+    return calculate_fare_breakdown(fare, travel_class)
 
 
 # Mount React production build if available

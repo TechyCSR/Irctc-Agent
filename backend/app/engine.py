@@ -25,6 +25,11 @@ from backend.app.stations import (
     haversine_distance,
 )
 
+try:
+    from backend.app.rail_metadata import classify_train
+except ImportError:
+    from app.rail_metadata import classify_train
+
 logger = logging.getLogger("IrctcAgent.Engine")
 
 
@@ -628,6 +633,7 @@ class PublicSearchEngine:
             "fares_by_class": it.fares_by_class,
             "booking_confidence": it.booking_confidence,
             "summary": it.status_summary,
+            "primary_category": classify_train(it.legs[0].train_number, it.legs[0].train_name)["category"],
             "lifehack_type": it.lifehack_type,
             "lifehack_tip": it.lifehack_tip,
             "booking_origin": it.booking_origin,
@@ -645,6 +651,7 @@ class PublicSearchEngine:
                 {
                     "train_no": l.train_number,
                     "train_name": l.train_name,
+                    "category": classify_train(l.train_number, l.train_name),
                     "from": l.from_station,
                     "to": l.to_station,
                     "departure": l.dep_formatted,
