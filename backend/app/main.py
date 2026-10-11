@@ -27,9 +27,13 @@ from fastapi.staticfiles import StaticFiles
 try:
     from backend.app.engine import PublicSearchEngine
     from backend.app.stations import STATIONS_DATA, search_stations
+    from backend.app.cache import search_cache, schedule_cache, multidate_cache
+    from backend.app.watchdog import watchdog_manager, calculate_charting_status
 except ImportError:
     from app.engine import PublicSearchEngine
     from app.stations import STATIONS_DATA, search_stations
+    from app.cache import search_cache, schedule_cache, multidate_cache
+    from app.watchdog import watchdog_manager, calculate_charting_status
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("IrctcAgent.API")
@@ -95,6 +99,11 @@ async def search_routes(
     """
     Standard synchronous REST search endpoint returning scored and deduplicated routes.
     """
+    cache_key = f"{from_stn.upper()}:{to_stn.upper()}:{date}:{quota.upper()}:{preferred_class or 'ALL'}"
+    cached = await search_cache.get(cache_key)
+    if cached:
+        return cached
+
     try:
         ranked = await engine.search_all(
             origin_code=from_stn,
@@ -108,7 +117,7 @@ async def search_routes(
         confirmed_count = sum(1 for it in ranked if it.booking_confidence == "CONFIRMED")
         lowest_fare = min((it.best_fare for it in ranked if it.best_fare > 0), default=0)
 
-        return {
+        res_payload = {
             "status": "success",
             "origin": from_stn.upper(),
             "destination": to_stn.upper(),
@@ -118,6 +127,8 @@ async def search_routes(
             "lowest_fare": lowest_fare,
             "routes": serialized
         }
+        await search_cache.set(cache_key, res_payload, ttl=300)
+        return res_payload
     except Exception as e:
         logger.exception("Search error")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
@@ -166,8 +177,9 @@ async def get_train_schedule(train_no: str, date: Optional[str] = Query(None)):
 
     use_date = date or datetime.now().strftime("%d-%m-%Y")
     cache_key = f"{clean_no}_{use_date}"
-    if cache_key in _SCHEDULE_CACHE:
-        return _SCHEDULE_CACHE[cache_key]
+    cached = await schedule_cache.get(cache_key)
+    if cached:
+        return cached
 
     try:
         ct = _get_ct_instance()
@@ -201,7 +213,7 @@ async def get_train_schedule(train_no: str, date: Optional[str] = Query(None)):
             "cleanliness_rating": raw.get("CleanlinessRating"),
             "stops": stops
         }
-        _SCHEDULE_CACHE[cache_key] = result
+        await schedule_cache.set(cache_key, result, ttl=86400)
         return result
     except Exception as e:
         logger.exception("Schedule lookup error")
@@ -221,6 +233,11 @@ async def get_multi_date_availability(
     Provides instant multi-date comparison strip.
     """
     from datetime import datetime, timedelta
+
+    md_cache_key = f"{from_stn.upper()}:{to_stn.upper()}:{start_date}:{days}:{quota.upper()}"
+    cached = await multidate_cache.get(md_cache_key)
+    if cached:
+        return cached
 
     try:
         start_dt = datetime.strptime(start_date, "%d-%m-%Y")
@@ -278,12 +295,51 @@ async def get_multi_date_availability(
             "lowest_fare": min_fare if min_fare != 999999 else 0
         })
 
-    return {
+    response_data = {
         "from": from_stn.upper(),
         "to": to_stn.upper(),
         "quota": quota,
         "dates": summary
     }
+    await multidate_cache.set(md_cache_key, response_data, ttl=300)
+    return response_data
+
+
+@app.get("/api/charting/status")
+async def get_charting_status(
+    dep_time: str = Query(..., description="Train departure time HH:MM"),
+    date: str = Query(..., description="Journey date DD-MM-YYYY")
+):
+    """Calculates 1st & 2nd chart preparation timeline and current booking vacancy window."""
+    return calculate_charting_status(dep_time, date)
+
+
+@app.post("/api/watchdog/subscribe")
+async def subscribe_watchdog(payload: dict):
+    """Subscribes an alert for seat availability changes on a train."""
+    return watchdog_manager.subscribe(
+        train_no=payload.get("train_no", ""),
+        doj=payload.get("doj", ""),
+        from_stn=payload.get("from_stn", ""),
+        to_stn=payload.get("to_stn", ""),
+        travel_class=payload.get("travel_class", "3A"),
+        quota=payload.get("quota", "GN"),
+        target_status=payload.get("target_status", "AVAILABLE"),
+        notify_channel=payload.get("notify_channel", "browser_push"),
+        contact=payload.get("contact", "")
+    )
+
+
+@app.get("/api/watchdog/list")
+async def list_watchdogs():
+    """Returns active watchlist alert subscriptions."""
+    return {"alerts": watchdog_manager.list_alerts()}
+
+
+@app.delete("/api/watchdog/{alert_id}")
+async def delete_watchdog(alert_id: str):
+    """Removes an active seat watchdog alert."""
+    return {"success": watchdog_manager.remove_alert(alert_id)}
 
 
 # Mount React production build if available
