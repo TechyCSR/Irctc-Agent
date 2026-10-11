@@ -15,11 +15,7 @@ import {
   Zap,
   RotateCcw,
   Trash2,
-  Sparkles,
-  Clock,
-  ShieldCheck,
-  Target,
-  ArrowRight
+  ChevronDown
 } from 'lucide-react';
 import { StationInput } from './components/StationInput';
 import { ItineraryCard } from './components/ItineraryCard';
@@ -32,6 +28,7 @@ import { FareBreakdownModal } from './components/FareBreakdownModal';
 import { WatchdogModal } from './components/WatchdogModal';
 import { ExportShareModal } from './components/ExportShareModal';
 import { SearchingRadarLoader } from './components/SearchingRadarLoader';
+import { InteractiveTrainCanvas } from './components/InteractiveTrainCanvas';
 import { ToastProvider, useToast } from './components/Toast';
 import { useTheme } from './context/ThemeContext';
 import { searchRoutesREST, searchStations } from './services/api';
@@ -144,6 +141,9 @@ const MainApp: React.FC = () => {
   const [lowestFare, setLowestFare] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
 
+  // Pagination limit: show first 12 routes, then load +5 each time
+  const [visibleCount, setVisibleCount] = useState<number>(12);
+
   // Filters & sorting
   const [activeTab, setActiveTab] = useState<'ALL' | 'CONFIRMED' | 'DIRECT' | 'HACKS'>('ALL');
   const [classFilter, setClassFilter] = useState('ALL');
@@ -157,6 +157,11 @@ const MainApp: React.FC = () => {
   const [sameStationOnly, setSameStationOnly] = useState(false);
   const [minLayoverMinutes, setMinLayoverMinutes] = useState(0);
   const [departureTimeWindow, setDepartureTimeWindow] = useState<'ALL' | 'MORNING' | 'AFTERNOON' | 'NIGHT'>('ALL');
+
+  // Reset pagination when search parameters or filters change
+  useEffect(() => {
+    setVisibleCount(12);
+  }, [activeTab, classFilter, categoryFilter, hubFilter, sortBy, textFilter, sameStationOnly, minLayoverMinutes, departureTimeWindow]);
 
   // Modal states
   const [activeScheduleTrain, setActiveScheduleTrain] = useState<{
@@ -282,6 +287,7 @@ const MainApp: React.FC = () => {
     setTotalEvaluated(0);
     setConfirmedCount(0);
     setLowestFare(0);
+    setVisibleCount(12);
     window.history.replaceState(null, '', window.location.pathname);
     showToast('Search reset successfully', 'info');
   }, [showToast]);
@@ -313,6 +319,7 @@ const MainApp: React.FC = () => {
       setSearchStatusText('Scanning 8,566 stations network & querying live IRCTC availability...');
       setRoutes([]);
       setHasSearched(true);
+      setVisibleCount(12);
 
       const formattedDate = formatDateToDDMMYYYY(date);
 
@@ -994,10 +1001,10 @@ const MainApp: React.FC = () => {
                 </div>
               </div>
 
-              {/* Itinerary Cards List */}
+              {/* Itinerary Cards List with Pagination */}
               {displayedRoutes.length > 0 ? (
                 <div className="space-y-4">
-                  {displayedRoutes.map((itinerary) => (
+                  {displayedRoutes.slice(0, visibleCount).map((itinerary) => (
                     <ItineraryCard
                       key={itinerary.id}
                       itinerary={itinerary}
@@ -1021,6 +1028,29 @@ const MainApp: React.FC = () => {
                       }
                     />
                   ))}
+
+                  {/* Load More Button (+5 Options) */}
+                  {visibleCount < displayedRoutes.length && (
+                    <div className="pt-4 pb-2 flex flex-col items-center justify-center gap-2.5 no-print">
+                      <button
+                        type="button"
+                        onClick={() => setVisibleCount((prev) => prev + 5)}
+                        className="px-6 py-2.5 rounded-xl bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-mono text-xs font-bold transition shadow-md active:scale-95 flex items-center gap-2 cursor-pointer"
+                      >
+                        <span>LOAD MORE OPTIONS (+{Math.min(5, displayedRoutes.length - visibleCount)})</span>
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                      <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+                        Showing {Math.min(visibleCount, displayedRoutes.length)} of {displayedRoutes.length} options
+                      </span>
+                    </div>
+                  )}
+
+                  {visibleCount >= displayedRoutes.length && displayedRoutes.length > 12 && (
+                    <div className="py-4 text-center text-xs font-mono text-zinc-400 dark:text-zinc-500 no-print">
+                      All {displayedRoutes.length} route options displayed
+                    </div>
+                  )}
                 </div>
               ) : !isSearching ? (
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-12 text-center space-y-3">
@@ -1070,156 +1100,10 @@ const MainApp: React.FC = () => {
             </div>
           )}
 
-          {/* Initial Prompt & Discovery Showcase State (before search or after reset) */}
+          {/* Realistic 3D Interactive Moving Train Visualizer (before search or after reset) */}
           {!hasSearched && (
-            <div className="space-y-6 animate-slide-up">
-              {/* Popular Corridor Quick-Launch Cards */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-zinc-900 dark:text-zinc-100" />
-                    <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-900 dark:text-white">
-                      Popular High-Demand Corridors
-                    </h2>
-                  </div>
-                  <span className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500">
-                    1-Click Instant Search
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                  {[
-                    {
-                      from: { code: 'NDLS', name: 'New Delhi', city: 'Delhi', state: 'Delhi' },
-                      to: { code: 'CSMT', name: 'Mumbai CSMT', city: 'Mumbai', state: 'Maharashtra' },
-                      tag: 'RAJDHANI / TEJAS',
-                      desc: 'Delhi ↔ Mumbai Superfast Corridor',
-                      via: 'Direct & Kota / Vadodara Splits',
-                    },
-                    {
-                      from: { code: 'JU', name: 'Jodhpur Jn', city: 'Jodhpur', state: 'Rajasthan' },
-                      to: { code: 'SBC', name: 'KSR Bengaluru', city: 'Bengaluru', state: 'Karnataka' },
-                      tag: 'SPLIT TICKET HUB',
-                      desc: 'Rajasthan ↔ South India Network',
-                      via: 'Merta & Ahmedabad Splits',
-                    },
-                    {
-                      from: { code: 'MAS', name: 'Chennai Central', city: 'Chennai', state: 'Tamil Nadu' },
-                      to: { code: 'SBC', name: 'KSR Bengaluru', city: 'Bengaluru', state: 'Karnataka' },
-                      tag: 'VANDE BHARAT',
-                      desc: 'High-Frequency Express Route',
-                      via: '4h 25m Speed Corridor',
-                    },
-                    {
-                      from: { code: 'ADI', name: 'Ahmedabad Jn', city: 'Ahmedabad', state: 'Gujarat' },
-                      to: { code: 'PUNE', name: 'Pune Jn', city: 'Pune', state: 'Maharashtra' },
-                      tag: 'DURONTO / SF',
-                      desc: 'Western Industrial Transit',
-                      via: 'Kalyan / Panvel Corridors',
-                    },
-                  ].map((corridor) => (
-                    <div
-                      key={`${corridor.from.code}-${corridor.to.code}`}
-                      className="glass-card bg-white/80 dark:bg-zinc-900/80 border border-zinc-200/90 dark:border-zinc-800/90 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-zinc-400 dark:hover:border-zinc-600 transition-all group"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700">
-                            {corridor.tag}
-                          </span>
-                          <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
-                            Daily Trains
-                          </span>
-                        </div>
-
-                        <div>
-                          <div className="font-mono font-bold text-base text-zinc-950 dark:text-white flex items-center gap-1.5">
-                            <span>{corridor.from.code}</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-zinc-400 group-hover:translate-x-0.5 transition-transform" />
-                            <span>{corridor.to.code}</span>
-                          </div>
-                          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 mt-0.5">
-                            {corridor.desc}
-                          </div>
-                          <div className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 mt-1">
-                            {corridor.via}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-3 mt-3 border-t border-zinc-100 dark:border-zinc-800/80">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFromStation(corridor.from);
-                            setToStation(corridor.to);
-                            executeSearch(corridor.from, corridor.to, journeyDate, quota);
-                          }}
-                          className="w-full py-1.5 px-3 rounded-lg bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 shadow-2xs"
-                        >
-                          <span>Explore Route</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Pathfinder Features Showcase (3 Cards) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                <div className="glass-card bg-white/75 dark:bg-zinc-900/75 border border-zinc-200/80 dark:border-zinc-800/80 rounded-xl p-5 space-y-2.5">
-                  <div className="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center">
-                    <Zap className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-mono font-bold text-sm text-zinc-950 dark:text-white">
-                    Same-Train Split Berths
-                  </h3>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                    When end-to-end berths are Waitlisted (WL) or Regret, our algorithm scans intermediate quotas on the exact same train. Travel on the same coach with zero train changing required.
-                  </p>
-                </div>
-
-                <div className="glass-card bg-white/75 dark:bg-zinc-900/75 border border-zinc-200/80 dark:border-zinc-800/80 rounded-xl p-5 space-y-2.5">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
-                    <Target className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-mono font-bold text-sm text-zinc-950 dark:text-white">
-                    Origin Point-Beyond Lifehack
-                  </h3>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                    Bypass pooled waitlists (PQWL/RLWL) by booking from the train's originating station where General Quota (GN) pool is largest, setting your downstream station as the official boarding point.
-                  </p>
-                </div>
-
-                <div className="glass-card bg-white/75 dark:bg-zinc-900/75 border border-zinc-200/80 dark:border-zinc-800/80 rounded-xl p-5 space-y-2.5">
-                  <div className="w-9 h-9 rounded-lg bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center shadow-xs">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-mono font-bold text-sm text-zinc-950 dark:text-white">
-                    1-Click Direct IRCTC Handoff
-                  </h3>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                    Pre-fills train number, journey date, boarding stations, and quota (General, Tatkal, Ladies, Senior Citizen) into official IRCTC NGET booking portal without manual re-typing.
-                  </p>
-                </div>
-              </div>
-
-              {/* IRCTC Tatkal Window & Master List Tip Box */}
-              <div className="glass-card bg-zinc-50/80 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
-                <div className="space-y-1">
-                  <div className="font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-                    <span>Official Tatkal Timings Reference:</span>
-                  </div>
-                  <div className="text-zinc-600 dark:text-zinc-400">
-                    AC Classes (1A, 2A, 3A, 3E, CC) open daily at <strong>10:00 AM IST</strong> • Non-AC Classes (SL, 2S) open daily at <strong>11:00 AM IST</strong>.
-                  </div>
-                </div>
-                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 sm:text-right shrink-0">
-                  Tip: Save passenger details in IRCTC Master List prior to booking window.
-                </div>
-              </div>
+            <div className="space-y-4 animate-slide-up">
+              <InteractiveTrainCanvas isDark={isDark} />
             </div>
           )}
         </main>
@@ -1367,7 +1251,17 @@ const MainApp: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="font-bold text-zinc-900 dark:text-white">IRCTC AGENT</span>
               <span>&bull;</span>
-              <span>Production Public Release v2.0</span>
+              <span>v2.0</span>
+              <span>&bull;</span>
+              <a
+                href="https://techycsr.dev"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-zinc-950 dark:hover:text-white transition font-medium text-zinc-700 dark:text-zinc-300 underline underline-offset-2 flex items-center gap-1"
+              >
+                <span>Developed by @TechyCSR</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
             </div>
 
             <div className="flex items-center gap-4 text-zinc-600 dark:text-zinc-400">
