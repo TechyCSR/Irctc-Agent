@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Train,
   ArrowRightLeft,
@@ -15,7 +15,8 @@ import {
   Zap,
   RotateCcw,
   Trash2,
-  ChevronDown
+  ChevronDown,
+  Menu
 } from 'lucide-react';
 import { StationInput } from './components/StationInput';
 import { ItineraryCard } from './components/ItineraryCard';
@@ -125,6 +126,25 @@ const MainApp: React.FC = () => {
   const [isBooting, setIsBooting] = useState<boolean>(() => {
     return !sessionStorage.getItem('irctc_agent_booted');
   });
+
+  // Menu bar dropdown state
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
 
   // Search parameters
   const [fromStation, setFromStation] = useState<StationItem | null>(null);
@@ -503,23 +523,22 @@ const MainApp: React.FC = () => {
 
           <div className="relative max-w-6xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between gap-3">
-              {/* Brand & Tagline - Clean Single Line */}
+              {/* Brand & Tagline - Clean Two-Line Vertical Stack */}
               <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
                 <span className="p-1.5 sm:p-2 rounded-lg bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 font-mono text-sm font-bold flex items-center justify-center shadow-xs shrink-0">
-                  <Train className="w-4 h-4" />
+                  <Train className="w-4 h-4 sm:w-5 sm:h-5" />
                 </span>
-                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                  <h1 className="text-sm sm:text-xl md:text-2xl font-black tracking-tight font-mono text-zinc-950 dark:text-white shrink-0">
+                <div className="flex flex-col min-w-0">
+                  <h1 className="text-base sm:text-xl md:text-2xl font-black tracking-tight font-mono text-zinc-950 dark:text-white leading-tight">
                     IrctcAgent
                   </h1>
-                  <span className="text-zinc-300 dark:text-zinc-700 font-mono text-xs shrink-0">•</span>
-                  <p className="text-[11px] sm:text-xs font-mono text-zinc-500 dark:text-zinc-400 font-medium truncate whitespace-nowrap">
+                  <p className="text-[11px] sm:text-xs font-mono text-zinc-500 dark:text-zinc-400 font-medium leading-tight truncate">
                     Book Your Last Available Ticket.
                   </p>
                 </div>
               </div>
 
-              {/* Minimal Clean Actions on Small Screen (No Clutter) */}
+              {/* Navigation Menu Bar */}
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {/* 8,566 Stations - Desktop only */}
                 <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 font-mono text-xs font-medium text-zinc-700 dark:text-zinc-300">
@@ -533,33 +552,82 @@ const MainApp: React.FC = () => {
                     type="button"
                     onClick={handleResetSearch}
                     title="Reset search and return to initial view"
-                    className="p-1.5 sm:px-3 sm:py-1 rounded-full border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5"
+                    className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
                     <span className="hidden sm:inline">Reset</span>
                   </button>
                 )}
 
-                {/* Dark Mode Theme Toggle */}
-                <button
-                  type="button"
-                  onClick={toggleTheme}
-                  title={`Switch to ${isDark ? 'Light' : 'OLED Dark'} Theme`}
-                  className="p-1.5 sm:p-2 rounded-full border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-zinc-700 dark:text-zinc-300 transition bg-white dark:bg-zinc-900 active:scale-95"
-                >
-                  {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-700" />}
-                </button>
+                {/* Menu Bar with Theme and How It Works */}
+                <div className="relative" ref={menuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMenuOpen((prev) => !prev)}
+                    title="Menu"
+                    aria-label="Toggle menu"
+                    className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-zinc-800 dark:text-zinc-200 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    {isMenuOpen ? <X className="w-4 h-4 text-zinc-700 dark:text-zinc-300" /> : <Menu className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />}
+                    <span className="hidden sm:inline text-xs font-mono font-bold">Menu</span>
+                  </button>
 
-                {/* How It Works - Icon only on mobile */}
-                <button
-                  type="button"
-                  onClick={() => setIsHowItWorksOpen(true)}
-                  title="How It Works"
-                  className="p-1.5 sm:px-3 sm:py-1 rounded-full border border-zinc-300 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-100 text-xs font-medium text-zinc-800 dark:text-zinc-200 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5"
-                >
-                  <Info className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
-                  <span className="hidden sm:inline">How It Works</span>
-                </button>
+                  {/* Dropdown Menu */}
+                  {isMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-56 glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 rounded-xl p-1.5 shadow-2xl z-50 animate-slide-up divide-y divide-zinc-100 dark:divide-zinc-800">
+                      <div className="py-1 space-y-0.5">
+                        {/* Theme Toggle Inside Menu Bar */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleTheme();
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono font-medium text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2">
+                            {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-600" />}
+                            <span>Theme</span>
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 font-bold">
+                            {isDark ? 'Dark' : 'Light'}
+                          </span>
+                        </button>
+
+                        {/* How To Know / How It Works Button Inside Menu Bar */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsHowItWorksOpen(true);
+                            setIsMenuOpen(false);
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono font-medium text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Info className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                            <span>How It Works</span>
+                          </span>
+                          <span className="text-[10px] text-zinc-400 font-mono font-medium">Guide</span>
+                        </button>
+                      </div>
+
+                      <div className="pt-1">
+                        {/* Official IRCTC Link */}
+                        <a
+                          href="https://www.irctc.co.in"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setIsMenuOpen(false)}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                        >
+                          <span className="flex items-center gap-2">
+                            <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>Official IRCTC</span>
+                          </span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -574,7 +642,7 @@ const MainApp: React.FC = () => {
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <span className="font-mono text-xs sm:text-sm font-bold uppercase tracking-wider text-zinc-950 dark:text-white truncate">
-                  Route & Confirmed Seat Optimizer
+                  Get Confirmed seat
                 </span>
               </div>
               <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 shrink-0">
