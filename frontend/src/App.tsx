@@ -514,12 +514,14 @@ const MainApp: React.FC = () => {
 
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans selection:bg-zinc-950 selection:text-white dark:selection:bg-white dark:selection:text-zinc-950">
         {/* Top Ambient Visualizer Header */}
-        <header className="relative border-b border-zinc-200/80 dark:border-zinc-800/80 glass-card bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30 overflow-hidden no-print transition-all">
-          {/* Three.js Ambient Particle Grid Canvas */}
-          <AmbientRouteCanvas
-            isSearching={isSearching}
-            className="absolute inset-0 w-full h-full opacity-30 dark:opacity-20 pointer-events-none"
-          />
+        <header className="relative border-b border-zinc-200/80 dark:border-zinc-800/80 glass-card bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md sticky top-0 z-40 no-print transition-all">
+          {/* Three.js Ambient Particle Grid Canvas (isolated overflow) */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <AmbientRouteCanvas
+              isSearching={isSearching}
+              className="w-full h-full opacity-30 dark:opacity-20 pointer-events-none"
+            />
+          </div>
 
           <div className="relative max-w-6xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between gap-3">
@@ -566,15 +568,24 @@ const MainApp: React.FC = () => {
                     onClick={() => setIsMenuOpen((prev) => !prev)}
                     title="Menu"
                     aria-label="Toggle menu"
-                    className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-zinc-800 dark:text-zinc-200 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-zinc-800 dark:text-zinc-200 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-xs relative z-50"
                   >
                     {isMenuOpen ? <X className="w-4 h-4 text-zinc-700 dark:text-zinc-300" /> : <Menu className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />}
                     <span className="hidden sm:inline text-xs font-mono font-bold">Menu</span>
                   </button>
 
+                  {/* Backdrop overlay on mobile */}
+                  {isMenuOpen && (
+                    <div
+                      className="fixed inset-0 bg-black/40 backdrop-blur-2xs z-40 sm:hidden"
+                      onClick={() => setIsMenuOpen(false)}
+                      aria-hidden="true"
+                    />
+                  )}
+
                   {/* Dropdown Menu */}
                   {isMenuOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-56 glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 rounded-xl p-1.5 shadow-2xl z-50 animate-slide-up divide-y divide-zinc-100 dark:divide-zinc-800">
+                    <div className="absolute right-0 top-full mt-2 w-60 sm:w-56 max-w-[calc(100vw-2rem)] glass-card bg-white/98 dark:bg-zinc-900/98 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl p-1.5 shadow-2xl z-50 animate-slide-up divide-y divide-zinc-100 dark:divide-zinc-800 ring-1 ring-black/5 dark:ring-white/10">
                       <div className="py-1 space-y-0.5">
                         {/* Theme Toggle Inside Menu Bar */}
                         <button
