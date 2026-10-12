@@ -501,26 +501,28 @@ const MainApp: React.FC = () => {
             className="absolute inset-0 w-full h-full opacity-30 dark:opacity-20 pointer-events-none"
           />
 
-          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-lg bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 font-mono text-sm font-bold flex items-center justify-center shadow-xs">
-                    <Train className="w-4 h-4" />
-                  </span>
-                  <div>
-                    <h1 className="text-xl sm:text-2xl font-black tracking-tight uppercase font-mono text-zinc-950 dark:text-white">
-                      IRCTC AGENT
-                    </h1>
-                    <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                      Confirmed Ticket Discovery • Same-Train Splits • Alternate Boarding
-                    </p>
-                  </div>
+          <div className="relative max-w-6xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4">
+            <div className="flex items-center justify-between gap-3">
+              {/* Brand & Tagline - Clean Single Line */}
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <span className="p-1.5 sm:p-2 rounded-lg bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 font-mono text-sm font-bold flex items-center justify-center shadow-xs shrink-0">
+                  <Train className="w-4 h-4" />
+                </span>
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                  <h1 className="text-sm sm:text-xl md:text-2xl font-black tracking-tight font-mono text-zinc-950 dark:text-white shrink-0">
+                    IrctcAgent
+                  </h1>
+                  <span className="text-zinc-300 dark:text-zinc-700 font-mono text-xs shrink-0">•</span>
+                  <p className="text-[11px] sm:text-xs font-mono text-zinc-500 dark:text-zinc-400 font-medium truncate whitespace-nowrap">
+                    Book Your Last Available Ticket.
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 font-mono text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              {/* Minimal Clean Actions on Small Screen (No Clutter) */}
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                {/* 8,566 Stations - Desktop only */}
+                <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 font-mono text-xs font-medium text-zinc-700 dark:text-zinc-300">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   8,566 STATIONS
                 </span>
@@ -531,7 +533,7 @@ const MainApp: React.FC = () => {
                     type="button"
                     onClick={handleResetSearch}
                     title="Reset search and return to initial view"
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 transition bg-white dark:bg-zinc-900 active:scale-95"
+                    className="p-1.5 sm:px-3 sm:py-1 rounded-full border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
                     <span className="hidden sm:inline">Reset</span>
@@ -543,18 +545,20 @@ const MainApp: React.FC = () => {
                   type="button"
                   onClick={toggleTheme}
                   title={`Switch to ${isDark ? 'Light' : 'OLED Dark'} Theme`}
-                  className="p-2 rounded-full border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-zinc-700 dark:text-zinc-300 transition bg-white dark:bg-zinc-900"
+                  className="p-1.5 sm:p-2 rounded-full border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-zinc-700 dark:text-zinc-300 transition bg-white dark:bg-zinc-900 active:scale-95"
                 >
                   {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-700" />}
                 </button>
 
+                {/* How It Works - Icon only on mobile */}
                 <button
                   type="button"
                   onClick={() => setIsHowItWorksOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-100 text-xs font-medium text-zinc-800 dark:text-zinc-200 transition bg-white dark:bg-zinc-900"
+                  title="How It Works"
+                  className="p-1.5 sm:px-3 sm:py-1 rounded-full border border-zinc-300 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-100 text-xs font-medium text-zinc-800 dark:text-zinc-200 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5"
                 >
                   <Info className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
-                  <span>How It Works</span>
+                  <span className="hidden sm:inline">How It Works</span>
                 </button>
               </div>
             </div>
@@ -562,43 +566,43 @@ const MainApp: React.FC = () => {
         </header>
 
         {/* Main Body */}
-        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <main className="flex-1 max-w-6xl w-full mx-auto px-3.5 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
           {/* Search Control Card with Glass Panel (Enlarged & Primary Focus) */}
-          <div className="glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200/90 dark:border-zinc-800/90 rounded-3xl p-6 sm:p-8 lg:p-9 shadow-2xl dark:shadow-2xl no-print transition-all ring-1 ring-zinc-950/5 dark:ring-white/10">
+          <div className="glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200/90 dark:border-zinc-800/90 rounded-2xl sm:rounded-3xl p-4 sm:p-7 lg:p-8 shadow-xl dark:shadow-2xl no-print transition-all ring-1 ring-zinc-950/5 dark:ring-white/10">
             {/* Focused Search Card Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-3 border-b border-zinc-100 dark:border-zinc-800/80">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-mono text-xs sm:text-sm font-bold uppercase tracking-wider text-zinc-950 dark:text-white">
-                  Smart Route Finder & Confirmed Berth Optimization
+            <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-zinc-100 dark:border-zinc-800/80">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="font-mono text-xs sm:text-sm font-bold uppercase tracking-wider text-zinc-950 dark:text-white truncate">
+                  Route & Confirmed Seat Optimizer
                 </span>
               </div>
-              <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">
-                8,566 Broad Gauge Stations Network
+              <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 shrink-0">
+                8,566 Stations
               </span>
             </div>
 
-            <form onSubmit={handleSearchSubmit} className="space-y-5">
+            <form onSubmit={handleSearchSubmit} className="space-y-4 sm:space-y-5">
               {/* Origin & Destination Inputs with Swap */}
-              <div className="grid grid-cols-1 md:grid-cols-11 gap-3.5 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-11 gap-2.5 sm:gap-3.5 items-end">
                 <div className="md:col-span-5">
                   <StationInput
                     label="From Station"
                     value={fromStation}
                     onChange={setFromStation}
-                    placeholder="Search any origin station or city..."
+                    placeholder="Search origin station or city..."
                     size="lg"
                   />
                 </div>
 
-                <div className="md:col-span-1 flex items-center justify-center pb-0.5">
+                <div className="md:col-span-1 flex items-center justify-center -my-1.5 md:my-0 md:pb-0.5 z-10">
                   <button
                     type="button"
                     onClick={handleSwap}
                     title="Swap Origin and Destination"
-                    className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-white bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition active:scale-95 shadow-xs"
+                    className="p-2.5 sm:p-3 rounded-full md:rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-white bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition active:scale-90 shadow-sm flex items-center justify-center cursor-pointer"
                   >
-                    <ArrowRightLeft className="w-4.5 h-4.5" />
+                    <ArrowRightLeft className="w-4 h-4 rotate-90 md:rotate-0 transition-transform" />
                   </button>
                 </div>
 
@@ -607,17 +611,17 @@ const MainApp: React.FC = () => {
                     label="To Station"
                     value={toStation}
                     onChange={setToStation}
-                    placeholder="Search any destination station or city..."
+                    placeholder="Search destination station or city..."
                     size="lg"
                   />
                 </div>
               </div>
 
-              {/* Date, Quota, Class, and Submit Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5 pt-2">
+              {/* Date, Quota, Class, and Submit Row (Mobile 2-col compact grid) */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5 pt-1 sm:pt-2">
                 {/* Journey Date */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-2">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-1.5 sm:mb-2">
                     Journey Date
                   </label>
                   <input
@@ -625,19 +629,19 @@ const MainApp: React.FC = () => {
                     value={journeyDate}
                     min={TODAY_ISO}
                     onChange={(e) => setJourneyDate(e.target.value)}
-                    className="w-full px-4 py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
+                    className="w-full px-3.5 sm:px-4 py-3 sm:py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-sm sm:text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
                   />
                 </div>
 
                 {/* Quota (All 8 IRCTC Quotas) */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-2">
+                <div className="col-span-1">
+                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-1.5 sm:mb-2">
                     Quota
                   </label>
                   <select
                     value={quota}
                     onChange={(e) => setQuota(e.target.value)}
-                    className="w-full px-4 py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
+                    className="w-full px-2.5 sm:px-4 py-3 sm:py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs sm:text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
                   >
                     {IRCTC_QUOTAS.map((q) => (
                       <option key={q.code} value={q.code}>
@@ -648,14 +652,14 @@ const MainApp: React.FC = () => {
                 </div>
 
                 {/* Preferred Class */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-2">
-                    Preferred Class
+                <div className="col-span-1">
+                  <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-1.5 sm:mb-2">
+                    Class
                   </label>
                   <select
                     value={classFilter}
                     onChange={(e) => setClassFilter(e.target.value)}
-                    className="w-full px-4 py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
+                    className="w-full px-2.5 sm:px-4 py-3 sm:py-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs sm:text-base font-semibold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:focus:ring-white transition shadow-xs"
                   >
                     <option value="ALL">All Classes</option>
                     <option value="3A">AC 3 Tier (3A)</option>
@@ -669,20 +673,20 @@ const MainApp: React.FC = () => {
                 </div>
 
                 {/* Search Submit & Reset Action */}
-                <div className="flex items-end gap-2">
+                <div className="col-span-2 sm:col-span-1 flex items-end gap-2">
                   <button
                     type="submit"
                     disabled={isSearching}
-                    className="flex-1 py-3.5 px-6 rounded-xl bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:bg-zinc-400 text-white dark:text-zinc-950 font-mono text-base font-bold flex items-center justify-center gap-2.5 transition shadow-md hover:shadow-lg active:scale-[0.98]"
+                    className="flex-1 py-3 sm:py-3.5 px-5 sm:px-6 rounded-xl bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:bg-zinc-400 text-white dark:text-zinc-950 font-mono text-sm sm:text-base font-bold flex items-center justify-center gap-2 transition shadow-md hover:shadow-lg active:scale-[0.98] cursor-pointer"
                   >
                     {isSearching ? (
                       <>
-                        <div className="w-4.5 h-4.5 border-2 border-white dark:border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                        <div className="w-4 h-4 border-2 border-white dark:border-zinc-950 border-t-transparent rounded-full animate-spin" />
                         <span>SEARCHING...</span>
                       </>
                     ) : (
                       <>
-                        <Search className="w-4.5 h-4.5" />
+                        <Search className="w-4 h-4" />
                         <span>FIND SEATS</span>
                       </>
                     )}
@@ -693,7 +697,7 @@ const MainApp: React.FC = () => {
                       type="button"
                       onClick={handleResetSearch}
                       title="Clear search inputs and reset results"
-                      className="py-3.5 px-4 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-200 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition active:scale-95 flex items-center gap-1.5 font-mono text-xs font-bold shadow-xs"
+                      className="py-3 sm:py-3.5 px-3 sm:px-4 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-200 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition active:scale-95 flex items-center gap-1.5 font-mono text-xs font-bold shadow-xs cursor-pointer"
                     >
                       <RotateCcw className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                       <span className="hidden md:inline">Reset</span>
@@ -704,16 +708,16 @@ const MainApp: React.FC = () => {
 
               {/* Advanced Filter Toggle & Popular Presets Row */}
               <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-zinc-100 dark:border-zinc-800">
-                <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 font-bold mr-1">
-                    Popular Routes:
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 text-xs">
+                  <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 font-bold shrink-0">
+                    Popular:
                   </span>
                   {POPULAR_PAIRS.map((pair) => (
                     <button
                       key={`${pair.from.code}-${pair.to.code}`}
                       type="button"
                       onClick={() => selectPopularPair(pair)}
-                      className="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-300 bg-zinc-50 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-[11px] font-mono transition"
+                      className="shrink-0 px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-300 bg-zinc-50 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-[11px] font-mono transition active:scale-95 cursor-pointer"
                     >
                       {pair.from.code} → {pair.to.code}
                     </button>
@@ -723,7 +727,7 @@ const MainApp: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                  className="inline-flex items-center gap-1 text-xs font-mono text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white self-start sm:self-auto font-medium transition"
+                  className="inline-flex items-center gap-1 text-xs font-mono text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white self-start sm:self-auto font-medium transition cursor-pointer shrink-0"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
                   <span>{showAdvancedFilters ? 'Hide Filters' : 'More Filters'}</span>
@@ -782,9 +786,9 @@ const MainApp: React.FC = () => {
 
               {/* Recent Searches */}
               {recentSearches.length > 0 && (
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-1.5 text-xs border-t border-zinc-100 dark:border-zinc-800/80">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 font-bold mr-1 flex items-center gap-1">
+                <div className="pt-2 flex items-center justify-between gap-2 text-xs border-t border-zinc-100 dark:border-zinc-800/80">
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                    <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 font-bold mr-1 shrink-0 flex items-center gap-1">
                       <History className="w-3 h-3" /> Recent:
                     </span>
                     {recentSearches.map((rec) => (
@@ -796,7 +800,7 @@ const MainApp: React.FC = () => {
                           setToStation(rec.to);
                           setJourneyDate(rec.date);
                         }}
-                        className="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-[11px] font-mono transition flex items-center gap-1 border border-transparent hover:border-zinc-300 dark:hover:border-zinc-600"
+                        className="shrink-0 px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-[11px] font-mono transition flex items-center gap-1 border border-transparent hover:border-zinc-300 dark:hover:border-zinc-600 active:scale-95"
                       >
                         <span>{rec.from.code} → {rec.to.code}</span>
                         <span className="text-[10px] text-zinc-400 dark:text-zinc-500">({rec.date})</span>
@@ -807,11 +811,11 @@ const MainApp: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleClearRecentSearches}
-                    className="text-[10px] font-mono text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition flex items-center gap-1 py-0.5 px-1.5 rounded"
+                    className="text-[10px] font-mono text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition flex items-center gap-1 py-1 px-1.5 rounded shrink-0 cursor-pointer"
                     title="Clear recent searches history"
                   >
                     <Trash2 className="w-3 h-3" />
-                    <span>Clear History</span>
+                    <span className="hidden sm:inline">Clear</span>
                   </button>
                 </div>
               )}
@@ -888,12 +892,12 @@ const MainApp: React.FC = () => {
                 </div>
 
                 {/* Quick Tab Filters & Reset Action */}
-                <div className="flex items-center gap-2 self-start md:self-auto">
-                  <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
+                <div className="flex items-center gap-2 self-start md:self-auto w-full md:w-auto justify-between md:justify-end">
+                  <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg overflow-x-auto no-scrollbar w-full sm:w-auto">
                     <button
                       type="button"
                       onClick={() => setActiveTab('ALL')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                      className={`shrink-0 px-2.5 sm:px-3 py-1 rounded text-xs font-mono font-bold transition cursor-pointer ${
                         activeTab === 'ALL'
                           ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
                           : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
@@ -904,7 +908,7 @@ const MainApp: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setActiveTab('CONFIRMED')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                      className={`shrink-0 px-2.5 sm:px-3 py-1 rounded text-xs font-mono font-bold transition cursor-pointer ${
                         activeTab === 'CONFIRMED'
                           ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
                           : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
@@ -915,7 +919,7 @@ const MainApp: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setActiveTab('HACKS')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition flex items-center gap-1 ${
+                      className={`shrink-0 px-2.5 sm:px-3 py-1 rounded text-xs font-mono font-bold transition flex items-center gap-1 cursor-pointer ${
                         activeTab === 'HACKS'
                           ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
                           : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
@@ -927,7 +931,7 @@ const MainApp: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setActiveTab('DIRECT')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
+                      className={`shrink-0 px-2.5 sm:px-3 py-1 rounded text-xs font-mono font-bold transition cursor-pointer ${
                         activeTab === 'DIRECT'
                           ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-2xs'
                           : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
@@ -940,7 +944,7 @@ const MainApp: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleResetSearch}
-                    className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-white text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition"
+                    className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-white text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition shrink-0 cursor-pointer"
                     title="Reset search and return to initial view"
                   >
                     <RotateCcw className="w-4 h-4" />
@@ -949,7 +953,7 @@ const MainApp: React.FC = () => {
               </div>
 
               {/* Train Category Filter Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-print">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-xs no-print">
                 <span className="text-[10px] font-mono uppercase text-zinc-400 font-bold shrink-0 mr-1">
                   Train Type:
                 </span>
@@ -1264,7 +1268,7 @@ const MainApp: React.FC = () => {
         <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-6 mt-12 text-center text-xs font-mono text-zinc-500 dark:text-zinc-400 no-print">
           <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-zinc-900 dark:text-white">IRCTC AGENT</span>
+              <span className="font-bold text-zinc-900 dark:text-white">IrctcAgent</span>
               <span>&bull;</span>
               <span>v2.0</span>
               <span>&bull;</span>

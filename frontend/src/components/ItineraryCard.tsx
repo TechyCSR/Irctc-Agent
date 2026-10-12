@@ -91,12 +91,12 @@ Status: ${itinerary.booking_confidence} (${itinerary.confirmation_probability ||
   const irctcBookingUrl = itinerary.irctc_link || `https://www.irctc.co.in/nget/train-search`;
 
   return (
-    <div className="itinerary-card bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-all">
+    <div className="itinerary-card bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 sm:p-5 shadow-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-all">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-100 dark:border-zinc-800">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {/* Recommendation Rank */}
-          <span className="inline-flex items-center px-2.5 py-1 rounded bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 font-mono text-xs font-bold tracking-tight">
+          <span className="inline-flex items-center px-2.5 py-0.5 sm:py-1 rounded bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 font-mono text-xs font-bold tracking-tight">
             OPTION #{itinerary.rank}
           </span>
 
@@ -139,16 +139,16 @@ Status: ${itinerary.booking_confidence} (${itinerary.confirmation_probability ||
         </div>
 
         {/* Total Duration & Fare */}
-        <div className="flex items-center gap-4 text-right">
+        <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 pt-1 sm:pt-0">
           <div>
             <span className="text-[10px] font-mono uppercase text-zinc-400 block">Total Travel</span>
-            <span className="text-sm font-mono font-bold text-zinc-900 dark:text-white flex items-center justify-end gap-1">
+            <span className="text-sm font-mono font-bold text-zinc-900 dark:text-white flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-zinc-400" />
               {itinerary.total_duration_str}
             </span>
           </div>
 
-          <div className="pl-4 border-l border-zinc-200 dark:border-zinc-800">
+          <div className="pl-3 sm:pl-4 border-l border-zinc-200 dark:border-zinc-800 text-right">
             <span className="text-[10px] font-mono uppercase text-zinc-400 block">Starting From</span>
             <span className="text-base font-mono font-black text-zinc-950 dark:text-white">
               {itinerary.best_fare > 0 ? `₹${itinerary.best_fare}` : '--'}
@@ -320,8 +320,8 @@ Status: ${itinerary.booking_confidence} (${itinerary.confirmation_probability ||
 
       {/* Footer: Class fares breakdown & CTAs */}
       <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-mono uppercase text-zinc-400 mr-1 font-bold">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+          <span className="text-[10px] font-mono uppercase text-zinc-400 mr-1 font-bold shrink-0">
             Fares:
           </span>
           {itinerary.fares_by_class && Object.keys(itinerary.fares_by_class).length > 0 ? (
@@ -330,28 +330,28 @@ Status: ${itinerary.booking_confidence} (${itinerary.confirmation_probability ||
                 key={cls}
                 type="button"
                 onClick={() => onOpenFareBreakdown && onOpenFareBreakdown(fare, cls, leg1.train_no, leg1.train_name)}
-                className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500 transition cursor-pointer"
+                className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500 transition cursor-pointer"
                 title="Click to view tariff breakdown"
               >
                 {cls}: ₹{fare}
               </button>
             ))
           ) : (
-            <span className="text-xs font-mono text-zinc-400">Calculated upon booking</span>
+            <span className="text-xs font-mono text-zinc-400 shrink-0">Calculated upon booking</span>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           {/* Watchdog Alert */}
           {onOpenWatchdog && (
             <button
               type="button"
               onClick={() => onOpenWatchdog(leg1.train_no, leg1.train_name, leg1.from, leg1.to, itinerary.best_fare_class || '3A')}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
+              className="inline-flex items-center justify-center gap-1 p-2 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
               title="Alert me when berths become available"
             >
               <Bell className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
-              <span>Watchdog</span>
+              <span className="hidden sm:inline">Watchdog</span>
             </button>
           )}
 
@@ -360,11 +360,11 @@ Status: ${itinerary.booking_confidence} (${itinerary.confirmation_probability ||
             <button
               type="button"
               onClick={() => onOpenExportShare(itinerary)}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
+              className="inline-flex items-center justify-center gap-1 p-2 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
               title="Share itinerary via WhatsApp or Print"
             >
               <Share2 className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
-              <span>Share</span>
+              <span className="hidden sm:inline">Share</span>
             </button>
           )}
 
@@ -372,10 +372,11 @@ Status: ${itinerary.booking_confidence} (${itinerary.confirmation_probability ||
           <button
             type="button"
             onClick={handleCopy}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
+            className="inline-flex items-center justify-center gap-1 p-2 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
+            title="Copy itinerary details"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-zinc-500" />}
-            <span>{copied ? 'Copied' : 'Copy'}</span>
+            <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
           </button>
 
           {/* Direct IRCTC Booking */}
@@ -383,7 +384,7 @@ Status: ${itinerary.booking_confidence} (${itinerary.confirmation_probability ||
             href={irctcBookingUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition shadow-xs"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition shadow-xs whitespace-nowrap"
           >
             <span>Book on IRCTC</span>
             <ExternalLink className="w-3.5 h-3.5" />

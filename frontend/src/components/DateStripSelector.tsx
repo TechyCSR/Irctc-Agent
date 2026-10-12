@@ -66,7 +66,7 @@ export const DateStripSelector: React.FC<DateStripSelectorProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+      <div className="flex overflow-x-auto no-scrollbar sm:grid sm:grid-cols-5 gap-2 pb-0.5">
         {dateItems.map((item) => {
           const isSelected = item.iso_date === selectedDate;
           const hasConfirmed = item.confirmed_trains > 0;
@@ -77,7 +77,7 @@ export const DateStripSelector: React.FC<DateStripSelectorProps> = ({
               key={item.iso_date}
               type="button"
               onClick={() => onSelectDate(item.iso_date)}
-              className={`p-2.5 rounded-lg border text-left transition-all relative ${
+              className={`min-w-[105px] flex-1 sm:min-w-0 p-2.5 rounded-lg border text-left transition-all relative cursor-pointer shrink-0 ${
                 isSelected
                   ? 'border-zinc-950 dark:border-white bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-xs'
                   : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 hover:bg-zinc-100/70 dark:hover:bg-zinc-800 text-zinc-900 dark:text-zinc-100'
