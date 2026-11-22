@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send,
   Square,
-  Bot,
-  User,
   Plus,
   Trash2,
   Menu,
@@ -12,12 +10,23 @@ import {
   Sparkles,
   ArrowRight,
   Zap,
+  Wrench,
+  Copy,
+  Check,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
+  TrainFront,
+  Compass,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Loader2,
 } from 'lucide-react';
 import type { ChatMessage, ChatSession, AgentStep, RouteItinerary } from '../../types';
 import { streamAgentChat } from '../../services/api';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ItineraryCard } from '../ItineraryCard';
-import { LiveActionRow } from './LiveActionRow';
+import { ToolExecutionModal } from './ToolExecutionModal';
 
 interface AgentChatViewProps {
   onOpenSchedule?: (trainNo: string, trainName: string, boarding: string, alighting: string) => void;
@@ -37,12 +46,23 @@ const INITIAL_SUGGESTIONS = [
 
 const SESSIONS_STORAGE_KEY = 'irctc_copilot_sessions_v2';
 const ACTIVE_SESSION_STORAGE_KEY = 'irctc_copilot_active_session_id';
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'irctc_sidebar_collapsed';
 
 function getDynamicGreeting(): string {
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12) return 'Good morning';
   if (hour >= 12 && hour < 17) return 'Good afternoon';
   return 'Good evening';
+}
+
+function formatISTTime(timestamp?: number): string {
+  if (!timestamp) return '';
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(timestamp));
 }
 
 function createDefaultWelcomeMessage(): ChatMessage {
@@ -103,7 +123,24 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
 
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false); // Mobile drawer
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Tool Inspector Modal
+  const [selectedModalSteps, setSelectedModalSteps] = useState<AgentStep[] | null>(null);
+
+  // ChatGPT-style actions feedback
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<Record<string, 'up' | 'down'>>({});
+
+  // Real-time live Indian Standard Time clock
+  const [currentTimeIST, setCurrentTimeIST] = useState<string>('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -112,6 +149,24 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
   // Active session object
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const messages = activeSession?.messages || [];
+
+  // Live IST Clock interval
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      const formatted = new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      }).format(now);
+      setCurrentTimeIST(formatted);
+    };
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Persist sessions to localStorage
   useEffect(() => {
@@ -122,6 +177,13 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
       }
     } catch {}
   }, [sessions, activeSessionId]);
+
+  // Persist sidebar collapsed state
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isSidebarCollapsed));
+    } catch {}
+  }, [isSidebarCollapsed]);
 
   // Auto-scroll on new message
   useEffect(() => {
@@ -146,7 +208,6 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
   const handleDeleteSession = (idToDelete: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (sessions.length <= 1) {
-      // If last session, reset it instead of deleting
       const fresh = createNewSessionObject('New Travel Chat');
       setSessions([fresh]);
       setActiveSessionId(fresh.id);
@@ -181,6 +242,19 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
     }
   };
 
+  const handleCopyMessage = (content: string, msgId: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedMsgId(msgId);
+    setTimeout(() => setCopiedMsgId(null), 1800);
+  };
+
+  const handleFeedback = (msgId: string, type: 'up' | 'down') => {
+    setFeedback((prev) => ({
+      ...prev,
+      [msgId]: prev[msgId] === type ? undefined : (type as any),
+    }));
+  };
+
   const sendMessage = useCallback(
     async (textToSend: string) => {
       const query = textToSend.trim();
@@ -211,9 +285,10 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
       const currentMessages = activeSession.messages;
       const updatedHistory = [...currentMessages, userMsg];
 
-      // Update session title dynamically from first real query if it's default
       const sessionTitle =
-        activeSession.title === 'Welcome to IRCTC AGENT' || activeSession.title === 'Welcome to Copilot' || activeSession.title === 'New Travel Chat'
+        activeSession.title === 'Welcome to IRCTC AGENT' ||
+        activeSession.title === 'Welcome to Copilot' ||
+        activeSession.title === 'New Travel Chat'
           ? query.length > 30
             ? query.substring(0, 30) + '...'
             : query
@@ -304,8 +379,9 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
                 )
               );
               setIsStreaming(false);
+              abortControllerRef.current = null;
             },
-            onError: (err) => {
+            onError: (err: Error) => {
               setSessions((prev) =>
                 prev.map((s) =>
                   s.id === activeSession.id
@@ -316,8 +392,8 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
                             ? {
                                 ...m,
                                 content:
-                                  m.content +
-                                  `\n\n⚠️ *Search assistance error: ${err.message || 'Please try again.'}*`,
+                                  m.content ||
+                                  `\n\n⚠️ *Search assistance error: ${err.message || 'Connection timeout'}*`,
                                 status: 'error',
                               }
                             : m
@@ -327,6 +403,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
                 )
               );
               setIsStreaming(false);
+              abortControllerRef.current = null;
             },
           },
           activeSession.id,
@@ -334,7 +411,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
           abortController.signal
         );
       } catch (err: any) {
-        if (!abortController.signal.aborted) {
+        if (err.name !== 'AbortError') {
           setSessions((prev) =>
             prev.map((s) =>
               s.id === activeSession.id
@@ -345,8 +422,8 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
                         ? {
                             ...m,
                             content:
-                              m.content +
-                              `\n\n⚠️ *Request failed: ${err.message || 'Connection error'}*`,
+                              m.content ||
+                              '⚠️ *Network connection error. Please verify your connection.*',
                             status: 'error',
                           }
                         : m
@@ -355,12 +432,21 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
                 : s
             )
           );
-          setIsStreaming(false);
         }
+        setIsStreaming(false);
+        abortControllerRef.current = null;
       }
     },
     [activeSession, isStreaming]
   );
+
+  const handleRegenerate = () => {
+    if (isStreaming) return;
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+    if (lastUserMsg) {
+      sendMessage(lastUserMsg.content);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -370,23 +456,32 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
   };
 
   return (
-    <div className="flex h-[calc(100vh-4.5rem)] w-full overflow-hidden rounded-2xl sm:rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950 shadow-2xl backdrop-blur-md">
-      {/* Mobile Sidebar Backdrop */}
+    <div className="flex h-full w-full overflow-hidden bg-zinc-100/50 dark:bg-zinc-950/60 relative">
+      {/* Tool Execution Inspector Modal */}
+      <ToolExecutionModal
+        isOpen={Boolean(selectedModalSteps)}
+        onClose={() => setSelectedModalSteps(null)}
+        steps={selectedModalSteps || []}
+      />
+
+      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-30 sm:hidden backdrop-blur-2xs transition-opacity"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-xs sm:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      {/* History Sidebar */}
+      {/* Collapsible History Sidebar */}
       <aside
-        className={`fixed sm:static inset-y-0 left-0 z-40 w-72 sm:w-64 md:w-72 flex flex-col bg-zinc-50 dark:bg-zinc-900/90 border-r border-zinc-200 dark:border-zinc-800 transition-transform duration-200 ease-in-out shrink-0 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'
+        className={`fixed sm:static inset-y-0 left-0 z-40 flex flex-col bg-zinc-50 dark:bg-zinc-900/90 border-r border-zinc-200 dark:border-zinc-800 transition-all duration-300 ease-in-out shrink-0 overflow-hidden ${
+          isSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full sm:translate-x-0'
+        } ${
+          isSidebarCollapsed ? 'sm:w-0 sm:border-r-0 sm:opacity-0' : 'sm:w-64 md:w-72 sm:opacity-100'
         }`}
       >
         {/* Sidebar Header */}
-        <div className="p-3.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2">
+        <div className="p-3.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2 shrink-0">
           <button
             type="button"
             onClick={handleCreateNewSession}
@@ -426,7 +521,11 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isCurrent ? 'text-orange-500' : 'text-zinc-400'}`} />
+                  <MessageSquare
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      isCurrent ? 'text-orange-500' : 'text-zinc-400'
+                    }`}
+                  />
                   <span className="truncate">{sess.title}</span>
                 </div>
                 <button
@@ -443,10 +542,10 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
+        <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between shrink-0">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Engine Ready</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>IRCTC Live Engine</span>
           </span>
           <span className="font-mono text-[10px]">
             {sessions.length} {sessions.length === 1 ? 'thread' : 'threads'}
@@ -456,10 +555,10 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
 
       {/* Main Full-Screen Chat View */}
       <section className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-950 overflow-hidden relative">
-        {/* Top Chat Bar */}
-        <header className="flex items-center justify-between px-3.5 sm:px-5 py-3 border-b border-zinc-200 dark:border-zinc-800/80 shrink-0 bg-white/70 dark:bg-zinc-950/70 backdrop-blur-md z-10">
-          <div className="flex items-center gap-2.5 min-w-0">
-            {/* Sidebar Toggle Button */}
+        {/* Top Chat Header Bar */}
+        <header className="flex items-center justify-between px-3 sm:px-5 py-3 border-b border-zinc-200 dark:border-zinc-800/80 shrink-0 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-10">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* Mobile Sidebar Toggle Button */}
             <button
               type="button"
               onClick={() => setIsSidebarOpen(true)}
@@ -469,8 +568,23 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
               <Menu className="w-4 h-4" />
             </button>
 
-            <div className="w-7 h-7 rounded-xl bg-orange-600 flex items-center justify-center text-white shadow-xs shrink-0">
-              <Bot className="w-4 h-4" />
+            {/* Desktop Sidebar Collapse / Expand Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              className="hidden sm:flex p-1.5 rounded-lg text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              title={isSidebarCollapsed ? 'Expand conversations sidebar' : 'Collapse sidebar'}
+            >
+              {isSidebarCollapsed ? (
+                <PanelLeftOpen className="w-4 h-4 text-orange-500" />
+              ) : (
+                <PanelLeftClose className="w-4 h-4" />
+              )}
+            </button>
+
+            {/* Redesigned IRCTC AGENT Header Avatar */}
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600 flex items-center justify-center text-white shadow-sm ring-1 ring-orange-500/30 shrink-0">
+              <TrainFront className="w-4 h-4" />
             </div>
 
             <div className="min-w-0">
@@ -480,7 +594,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
                 </h2>
                 <span className="hidden md:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Live IRCTC Intelligence
+                  Live IRCTC Portal
                 </span>
               </div>
               <p className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate">
@@ -489,32 +603,46 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="flex items-center gap-1.5">
+          {/* Header Right: Real-time Live Indian Standard Time (IST) Clock & Quick Actions */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Live IST Digital Clock */}
+            {currentTimeIST && (
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100/90 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 font-mono text-[11px] text-zinc-700 dark:text-zinc-300 shadow-2xs"
+                title="Current Indian Standard Time (IST) in real-time"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="font-semibold tracking-tight tabular-nums">{currentTimeIST}</span>
+                <span className="text-zinc-400 text-[10px]">IST</span>
+              </div>
+            )}
+
             {onSwitchToOptimizer && (
               <button
                 type="button"
                 onClick={() => onSwitchToOptimizer()}
-                className="hidden md:flex items-center gap-1 px-2 py-1 text-xs font-mono font-medium rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                className="hidden lg:flex items-center gap-1 px-2.5 py-1 text-xs font-mono font-medium rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 title="Switch to Direct Optimizer matrix"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
                 <span>Optimizer</span>
               </button>
             )}
+
             <button
               type="button"
               onClick={handleCreateNewSession}
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
               title="Start New Chat Session"
             >
               <Plus className="w-3.5 h-3.5 text-orange-500" />
               <span>New Chat</span>
             </button>
+
             <button
               type="button"
               onClick={handleClearCurrentChat}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
               title="Clear Current Chat"
             >
               <Trash2 className="w-4 h-4" />
@@ -522,56 +650,154 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
           </div>
         </header>
 
-        {/* Messages Thread Container */}
+        {/* Messages Thread Canvas */}
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 space-y-6 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800">
           <div className="max-w-3xl lg:max-w-4xl mx-auto space-y-6 w-full">
             {messages.map((msg) => {
               const isUser = msg.role === 'user';
               const hasSteps = msg.steps && msg.steps.length > 0;
               const hasRoutes = msg.routes && msg.routes.length > 0;
+              const isStreamingThis = msg.status === 'streaming';
 
               return (
                 <div
                   key={msg.id}
                   className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
                 >
-                  {/* Avatar */}
-                  <div
-                    className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold ${
-                      isUser
-                        ? 'bg-zinc-800 text-white dark:bg-zinc-700'
-                        : 'bg-orange-600 text-white shadow-xs'
-                    }`}
-                  >
-                    {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                  </div>
+                  {/* Redesigned Custom Avatars */}
+                  {isUser ? (
+                    <div
+                      className="w-8 h-8 rounded-xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-black dark:from-zinc-700 dark:to-zinc-900 flex items-center justify-center text-white shadow-sm ring-1 ring-white/10 shrink-0 mt-0.5"
+                      title="Passenger Traveler"
+                    >
+                      <Compass className="w-4 h-4 text-zinc-300" />
+                    </div>
+                  ) : (
+                    <div
+                      className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600 flex items-center justify-center text-white shadow-sm ring-1 ring-orange-500/30 shrink-0 mt-0.5"
+                      title="IRCTC AGENT"
+                    >
+                      <TrainFront className="w-4 h-4" />
+                    </div>
+                  )}
 
                   {/* Message Bubble Container */}
                   <div
-                    className={`space-y-3 max-w-[92%] sm:max-w-[85%] md:max-w-[80%] ${
-                      isUser ? 'items-end' : 'items-start'
+                    className={`space-y-2 max-w-[92%] sm:max-w-[85%] md:max-w-[80%] ${
+                      isUser ? 'items-end' : 'items-start w-full'
                     }`}
                   >
                     {/* User Message */}
                     {isUser ? (
-                      <div className="px-4 py-2.5 rounded-2xl rounded-tr-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs sm:text-sm font-medium shadow-xs leading-relaxed border border-zinc-800 dark:border-zinc-200">
-                        {msg.content}
+                      <div className="space-y-1">
+                        <div className="px-4 py-2.5 rounded-2xl rounded-tr-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs sm:text-sm font-medium shadow-xs leading-relaxed border border-zinc-800 dark:border-zinc-200">
+                          {msg.content}
+                        </div>
+                        {/* User Timestamp in IST */}
+                        <div className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 text-right pr-1 select-none">
+                          {formatISTTime(msg.timestamp)}
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-3 w-full">
-                        {/* Live Tool Action Row */}
-                        {hasSteps && (
-                          <LiveActionRow
-                            steps={msg.steps || []}
-                            isStreaming={msg.status === 'streaming'}
-                            hasContent={Boolean(msg.content && msg.content.trim().length > 0)}
-                          />
+                        {/* Live Engine Working Indicator (Only shown while actively streaming and no text yet) */}
+                        {isStreamingThis && (!msg.content || msg.content.trim().length === 0) && (
+                          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-orange-500/5 dark:bg-orange-500/10 border border-orange-500/20 text-orange-600 dark:text-orange-400 text-xs font-mono animate-pulse w-fit">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>
+                              {hasSteps && msg.steps && msg.steps[msg.steps.length - 1]?.label
+                                ? msg.steps[msg.steps.length - 1].label
+                                : 'Analyzing trains, split berths & seat matrix...'}
+                            </span>
+                          </div>
                         )}
 
-                        {/* Main Assistant Text */}
+                        {/* Main Assistant Text Response */}
                         {msg.content && (
                           <div className="group px-4 py-3.5 rounded-2xl rounded-tl-xs bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200/90 dark:border-zinc-800/90 hover:border-zinc-300 dark:hover:border-zinc-700/70 text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 shadow-2xs transition-all duration-200">
                             <MarkdownRenderer content={msg.content} />
+                          </div>
+                        )}
+
+                        {/* ChatGPT-style Advanced Action Bar & Tool Inspector Button BELOW the response */}
+                        {msg.content && (
+                          <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
+                            {/* Left: Action Buttons */}
+                            <div className="flex items-center gap-1">
+                              {/* Copy Message */}
+                              <button
+                                type="button"
+                                onClick={() => handleCopyMessage(msg.content, msg.id)}
+                                className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                                title="Copy response to clipboard"
+                              >
+                                {copiedMsgId === msg.id ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+
+                              {/* Regenerate */}
+                              <button
+                                type="button"
+                                onClick={handleRegenerate}
+                                disabled={isStreaming}
+                                className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors cursor-pointer disabled:opacity-40"
+                                title="Regenerate response"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Thumbs Up */}
+                              <button
+                                type="button"
+                                onClick={() => handleFeedback(msg.id, 'up')}
+                                className={`p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer ${
+                                  feedback[msg.id] === 'up'
+                                    ? 'text-emerald-500 bg-emerald-500/10'
+                                    : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                                }`}
+                                title="Helpful response"
+                              >
+                                <ThumbsUp className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Thumbs Down */}
+                              <button
+                                type="button"
+                                onClick={() => handleFeedback(msg.id, 'down')}
+                                className={`p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer ${
+                                  feedback[msg.id] === 'down'
+                                    ? 'text-rose-500 bg-rose-500/10'
+                                    : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                                }`}
+                                title="Not helpful"
+                              >
+                                <ThumbsDown className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Tools Used Inspector Pill Button (Click to open Popup Dialog) */}
+                              {hasSteps && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedModalSteps(msg.steps || [])}
+                                  className="ml-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium border border-zinc-200 dark:border-zinc-800 bg-zinc-100/80 hover:bg-zinc-200/80 dark:bg-zinc-900/90 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-all cursor-pointer shadow-2xs group"
+                                  title="Inspect tools query, parameters & responses"
+                                >
+                                  <Wrench className="w-3 h-3 text-orange-500 group-hover:rotate-45 transition-transform" />
+                                  <span>
+                                    {msg.steps?.length}{' '}
+                                    {msg.steps?.length === 1 ? 'Action' : 'Actions'} Executed
+                                  </span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Right: Small Indian Standard Time (IST) Timing */}
+                            <div className="flex items-center gap-1 text-[10px] font-mono text-zinc-400 dark:text-zinc-500 select-none">
+                              <span>{formatISTTime(msg.timestamp)}</span>
+                            </div>
                           </div>
                         )}
 
