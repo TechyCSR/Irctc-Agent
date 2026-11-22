@@ -10,7 +10,17 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from langchain_core.tools import tool
+try:
+    from langchain_core.tools import tool
+except ImportError:
+    def tool(fn):
+        async def ainvoke(arg_dict=None, **kwargs):
+            if isinstance(arg_dict, dict):
+                return await fn(**arg_dict)
+            return await fn(**kwargs)
+        fn.ainvoke = ainvoke
+        fn.name = fn.__name__
+        return fn
 
 try:
     from app.engine import PublicSearchEngine, normalize_date_ddmmyyyy
@@ -29,45 +39,103 @@ _engine = PublicSearchEngine()
 CITY_TO_DEFAULT_CODE = {
     "DELHI": "NDLS",
     "NEW DELHI": "NDLS",
+    "DILLI": "NDLS",
     "BANGALORE": "SBC",
     "BENGALURU": "SBC",
+    "BANGLORE": "SBC",
+    "BANGALOR": "SBC",
     "MUMBAI": "CSMT",
     "BOMBAY": "CSMT",
     "KOLKATA": "HWH",
     "CALCUTTA": "HWH",
+    "HOWRAH": "HWH",
     "CHENNAI": "MAS",
     "MADRAS": "MAS",
     "HYDERABAD": "SC",
     "SECUNDERABAD": "SC",
     "AHMEDABAD": "ADI",
+    "SABARMATI": "ADI",
     "PUNE": "PUNE",
     "JAIPUR": "JP",
     "JODHPUR": "JU",
+    "JODPHUR": "JU",
     "LUCKNOW": "LKO",
     "KANPUR": "CNB",
     "JHANSI": "VGLJ",
+    "JAHSI": "VGLJ",
+    "VGLB": "VGLJ",
     "GWALIOR": "GWL",
+    "GAWALIOR": "GWL",
     "BHOPAL": "BPL",
+    "BHOAP": "BPL",
+    "HABIBGANJ": "BPL",
+    "RKMP": "BPL",
     "PATNA": "PNBE",
     "VARANASI": "BSB",
+    "BANARAS": "BSB",
+    "KASHI": "BSB",
+    "PRAYAGRAJ": "PRYJ",
+    "ALLAHABAD": "PRYJ",
     "CHANDIGARH": "CDG",
     "AGRA": "AGC",
+    "SURAT": "ST",
+    "NAGPUR": "NGP",
+    "AMRITSAR": "ASR",
+    "GOA": "MAO",
+    "MADGAON": "MAO",
+    "INDORE": "INDB",
+    "COIMBATORE": "CBE",
+    "TRIVANDRUM": "TVC",
+    "THIRUVANANTHAPURAM": "TVC",
+    "KOCHI": "ERS",
+    "COCHIN": "ERS",
+    "ERNAKULAM": "ERS",
+    "VISAKHAPATNAM": "VSKP",
+    "VIZAG": "VSKP",
+    "VIJAYAWADA": "BZA",
+    "BHUBANESWAR": "BBS",
+    "GUWAHATI": "GHY",
+    "RANCHI": "RNC",
+    "RAIPUR": "R",
+    "GORAKHPUR": "GKP",
+    "HARIDWAR": "HW",
+    "DEHRADUN": "DDN",
+    "KOTA": "KOTA",
+    "UJJAIN": "UJN",
+    "JAMMU": "JAT",
+    "KATRA": "SVDK",
 }
 
 
 def resolve_station_code(query: str) -> str:
-    """Resolves station code from code or city name."""
+    """Resolves station code from code or city name, filtering temporal words and typos."""
     if not query:
         return ""
-    q = query.strip().upper()
+    import re
+    import difflib
+
+    raw = query.strip()
+    # Strip temporal and non-station stopwords that often get appended (e.g. 'jodphur tomor' -> 'jodphur')
+    words_to_strip = r"\b(tomorrow|tomor|tmrw|tomo|2moro|today|tdy|tonight|next|curren|current|train|trains|ticket|tickets|fast|express|stops?|station|city)\b"
+    cleaned = re.sub(words_to_strip, "", raw, flags=re.IGNORECASE).strip()
+    target = cleaned if cleaned else raw
+    q = target.upper()
+
     if q in STATIONS_BY_CODE:
         return q
     if q in CITY_TO_DEFAULT_CODE:
         return CITY_TO_DEFAULT_CODE[q]
-    matches = search_stations(query, limit=5)
+
+    matches = search_stations(target, limit=5)
     if matches:
         return matches[0]["code"]
-    return q
+
+    # Fuzzy match against known city synonyms
+    close_cities = difflib.get_close_matches(target.lower(), [k.lower() for k in CITY_TO_DEFAULT_CODE.keys()], n=1, cutoff=0.7)
+    if close_cities:
+        return CITY_TO_DEFAULT_CODE[close_cities[0].upper()]
+
+    return target
 
 
 @tool

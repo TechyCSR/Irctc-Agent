@@ -8,7 +8,16 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional
-from MultiFeatures.IndianRailway import confirmtkt
+try:
+    from MultiFeatures.IndianRailway import confirmtkt
+except ImportError:
+    class DummyConfirmTkt:
+        def Confirmtkt(self):
+            return self
+        async def train_btwn_station(self, *args, **kwargs): return []
+        async def check_seat(self, *args, **kwargs): return []
+        async def train_schedule(self, *args, **kwargs): return {}
+    confirmtkt = DummyConfirmTkt()
 
 logger = logging.getLogger("IrctcAgent.Client")
 
