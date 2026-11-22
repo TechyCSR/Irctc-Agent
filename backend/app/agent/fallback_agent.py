@@ -17,7 +17,9 @@ try:
         get_charting_status,
         web_search_rail_intel,
         resolve_station_code,
-        CITY_TO_DEFAULT_CODE
+        CITY_TO_DEFAULT_CODE,
+        STATE_TO_PRIMARY_HUBS,
+        deduplicate_routes,
     )
     from app.engine import normalize_date_ddmmyyyy
 except ImportError:
@@ -29,7 +31,9 @@ except ImportError:
         get_charting_status,
         web_search_rail_intel,
         resolve_station_code,
-        CITY_TO_DEFAULT_CODE
+        CITY_TO_DEFAULT_CODE,
+        STATE_TO_PRIMARY_HUBS,
+        deduplicate_routes,
     )
     from backend.app.engine import normalize_date_ddmmyyyy
 
@@ -102,6 +106,26 @@ def parse_date_from_text(text: str) -> Optional[str]:
     return None
 
 
+def parse_date_range_from_text(text: str) -> Optional[Tuple[str, str]]:
+    """Extracts date range e.g. 'from 26 dec to 31 dec' or '26 to 31 dec'."""
+    lower = text.lower()
+    now = datetime.now()
+    match = re.search(
+        r"\b(?:from\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-zA-Z]{3,9}))?\s+to\s+(\d{1,2})(?:st|nd|rd|th)?\s+([a-zA-Z]{3,9})(?:\s+(\d{4}))?\b",
+        lower,
+    )
+    if match:
+        d1, m1, d2, m2, y = match.groups()
+        month1 = m1 or m2
+        month2 = m2
+        year = int(y) if y else now.year
+        mon1_num = MONTHS.get(month1[:3].lower()) if month1 else None
+        mon2_num = MONTHS.get(month2[:3].lower()) if month2 else None
+        if mon1_num and mon2_num:
+            return f"{str(d1).zfill(2)}-{str(mon1_num).zfill(2)}-{year}", f"{str(d2).zfill(2)}-{str(mon2_num).zfill(2)}-{year}"
+    return None
+
+
 def parse_budget_from_text(text: str) -> Optional[int]:
     """Extracts budget limit e.g. 'under 1500', '< 1200', 'less than 2000'."""
     lower = text.lower()
@@ -150,8 +174,22 @@ def parse_quota_from_text(text: str) -> str:
 
 
 def extract_station_pair(text: str) -> Tuple[Optional[str], Optional[str]]:
-    """Extracts from and to station names/cities with automatic word cleaning."""
-    clean_words = r"\b(tomorrow|tomor|tmrw|tomo|2moro|today|tdy|tonight|next|curren|current|train|trains|ticket|tickets|fast|express|stops?|station|city|confirmed|seat|seats|berth|quota|tatkal|under|\d+)\b"
+    """Extracts from and to station names/cities with automatic word cleaning and date-range exclusion."""
+    clean_words = r"\b(tomorrow|tomor|tmrw|tomo|2moro|today|tdy|tonight|next|curren|current|train|trains|ticket|tickets|fast|express|stops?|station|stations|city|state|any|all|stn|jn|junction|railway|confirmed|seat|seats|berth|quota|tatkal|under|\d+)\b"
+
+    # Pre-strip date phrases like 'from 26 dec to 31 dec' so they don't capture as stations
+    text_no_dates = re.sub(
+        r"\b(?:from\s+)?\d{1,2}(?:st|nd|rd|th)?(?:\s+[a-zA-Z]{3,9})?\s+to\s+\d{1,2}(?:st|nd|rd|th)?\s+[a-zA-Z]{3,9}(?:\s+\d{4})?\b",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text_no_dates = re.sub(
+        r"\b(?:from\s+)?\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\s+to\s+\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b",
+        "",
+        text_no_dates,
+        flags=re.IGNORECASE,
+    )
 
     def sanitize(station_str: str) -> str:
         s = re.sub(clean_words, "", station_str, flags=re.IGNORECASE).strip()
@@ -161,7 +199,7 @@ def extract_station_pair(text: str) -> Tuple[Optional[str], Optional[str]]:
     # Pattern: "from X to Y"
     match = re.search(
         r"from\s+([a-zA-Z\s]{2,25}?)\s+to\s+([a-zA-Z\s]{2,25}?)(?:\s+(?:on|for|in|under|between|with|date|by|tomorrow|tomor|tmrw|today|day|confirmed|tatkal|quota|next|\d)|$|[,\.\?!])",
-        text,
+        text_no_dates,
         re.IGNORECASE,
     )
     if match:
@@ -171,7 +209,7 @@ def extract_station_pair(text: str) -> Tuple[Optional[str], Optional[str]]:
             return f, t
 
     # Pattern: "X to Y"
-    match2 = re.search(r"\b([a-zA-Z]{3,20})\s+to\s+([a-zA-Z\s]{3,20})\b", text, re.IGNORECASE)
+    match2 = re.search(r"\b([a-zA-Z]{2,20}(?:\s+[a-zA-Z]{2,15})?)\s+to\s+([a-zA-Z\s]{2,20})\b", text_no_dates, re.IGNORECASE)
     if match2:
         f = sanitize(match2.group(1))
         t = sanitize(match2.group(2))
@@ -181,7 +219,7 @@ def extract_station_pair(text: str) -> Tuple[Optional[str], Optional[str]]:
     # Pattern: "between X and Y"
     match3 = re.search(
         r"between\s+([a-zA-Z\s]{2,25}?)\s+and\s+([a-zA-Z\s]{2,25}?)(?:\s+(?:on|for|in|under|tomorrow|tomor|today|day|next|\d)|$|[,\.\?!])",
-        text,
+        text_no_dates,
         re.IGNORECASE,
     )
     if match3:
@@ -711,7 +749,8 @@ class SmartFallbackAgent:
                     ]
                 }
 
-        date = parse_date_from_text(text) or prev_date or (datetime.now() + timedelta(days=1)).strftime("%d-%m-%Y")
+        date_range = parse_date_range_from_text(text)
+        date = (date_range[0] if date_range else None) or parse_date_from_text(text) or prev_date or (datetime.now() + timedelta(days=1)).strftime("%d-%m-%Y")
         budget = parse_budget_from_text(text)
         pref_class = parse_class_from_text(text)
         quota = parse_quota_from_text(text)
@@ -746,8 +785,8 @@ class SmartFallbackAgent:
         })
 
         search_res = await search_trains.ainvoke({
-            "origin": src_code,
-            "destination": dst_code,
+            "origin": from_raw,
+            "destination": to_raw,
             "date": date,
             "quota": quota,
             "preferred_class": pref_class,
@@ -763,10 +802,10 @@ class SmartFallbackAgent:
                 "routes": []
             }
 
-        found_routes = search_res.get("routes", [])
+        found_routes = deduplicate_routes(search_res.get("routes", []))
         total_eval = search_res.get("total_evaluated", 0)
-        confirmed_cnt = search_res.get("confirmed_count", 0)
-        lowest_fare = search_res.get("lowest_fare", 0)
+        confirmed_cnt = sum(1 for r in found_routes if r.get("booking_confidence") == "CONFIRMED")
+        lowest_fare = min((r.get("best_fare", 0) for r in found_routes if r.get("best_fare", 0) > 0), default=0)
 
         steps.append({
             "label": f"Evaluated {total_eval} routes. Found {len(found_routes)} matching options ({confirmed_cnt} confirmed seats).",
@@ -786,8 +825,12 @@ class SmartFallbackAgent:
             filter_desc.append("**Confirmed Only**")
         filter_str = f" ({', '.join(filter_desc)})" if filter_desc else ""
 
+        date_header = f"on **{date}**"
+        if date_range:
+            date_header = f"for **{date}** (Search Window: {date_range[0]} to {date_range[1]})"
+
         reply_lines = [
-            f"### 🎯 Found {len(found_routes)} trains from `{src_code}` to `{dst_code}` on **{date}**{filter_str}\n",
+            f"### 🎯 Found {len(found_routes)} trains from `{src_code}` to `{dst_code}` {date_header}{filter_str}\n",
             f"• **Confirmed Available:** `{confirmed_cnt} options`",
             f"• **Lowest Fare:** `₹{lowest_fare}`",
         ]

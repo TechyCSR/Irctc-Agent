@@ -106,31 +106,122 @@ CITY_TO_DEFAULT_CODE = {
     "KATRA": "SVDK",
 }
 
+# Major railway hubs for Indian States & Union Territories
+STATE_TO_PRIMARY_HUBS: Dict[str, List[str]] = {
+    "UP": ["CNB", "LKO", "BSB", "GKP", "AGC", "PRYJ"],
+    "UTTAR PRADESH": ["CNB", "LKO", "BSB", "GKP", "AGC", "PRYJ"],
+    "MP": ["BPL", "RKMP", "INDB", "GWL", "JBP", "UJN"],
+    "MADHYA PRADESH": ["BPL", "RKMP", "INDB", "GWL", "JBP", "UJN"],
+    "MAHARASHTRA": ["CSMT", "PUNE", "NGP", "BDTS", "LTT"],
+    "MH": ["CSMT", "PUNE", "NGP", "BDTS", "LTT"],
+    "KARNATAKA": ["SBC", "YPR", "SMVB", "MYS", "UBL"],
+    "KA": ["SBC", "YPR", "SMVB", "MYS", "UBL"],
+    "TAMIL NADU": ["MAS", "MS", "CBE", "MDU", "TPJ"],
+    "TN": ["MAS", "MS", "CBE", "MDU", "TPJ"],
+    "DELHI": ["NDLS", "DLI", "NZM", "ANVT"],
+    "DL": ["NDLS", "DLI", "NZM", "ANVT"],
+    "NCR": ["NDLS", "DLI", "NZM", "ANVT", "GZB"],
+    "WEST BENGAL": ["HWH", "SDAH", "KOAA", "NJP"],
+    "WB": ["HWH", "SDAH", "KOAA", "NJP"],
+    "BENGAL": ["HWH", "SDAH", "KOAA", "NJP"],
+    "BIHAR": ["PNBE", "PPTA", "DNR", "GAYA", "MFP", "DBG"],
+    "RAJASTHAN": ["JP", "JU", "KOTA", "BKN", "AII"],
+    "RJ": ["JP", "JU", "KOTA", "BKN", "AII"],
+    "GUJARAT": ["ADI", "BRC", "ST", "RJT"],
+    "GJ": ["ADI", "BRC", "ST", "RJT"],
+    "PUNJAB": ["ASR", "LDH", "JUC", "BTI"],
+    "PB": ["ASR", "LDH", "JUC", "BTI"],
+    "HARYANA": ["UMB", "CDG", "PNP", "ROK"],
+    "HR": ["UMB", "CDG", "PNP", "ROK"],
+    "KERALA": ["TVC", "ERS", "CLT", "TCR"],
+    "KL": ["TVC", "ERS", "CLT", "TCR"],
+    "ANDHRA PRADESH": ["BZA", "VSKP", "TPTY", "RU", "GNT"],
+    "AP": ["BZA", "VSKP", "TPTY", "RU", "GNT"],
+    "TELANGANA": ["SC", "HYB", "KCG", "KZJ"],
+    "TS": ["SC", "HYB", "KCG", "KZJ"],
+    "ODISHA": ["BBS", "CTC", "PURI", "ROU"],
+    "ORISSA": ["BBS", "CTC", "PURI", "ROU"],
+    "JHARKHAND": ["RNC", "DHN", "TATA"],
+    "JH": ["RNC", "DHN", "TATA"],
+    "CHHATTISGARH": ["R", "BSP", "DURG"],
+    "CG": ["R", "BSP", "DURG"],
+    "UTTARAKHAND": ["HW", "DDN", "KGM"],
+    "UK": ["HW", "DDN", "KGM"],
+    "ASSAM": ["GHY", "KYQ", "DBRG"],
+    "GOA": ["MAO", "KRMI", "THVM"],
+    "JAMMU AND KASHMIR": ["JAT", "SVDK"],
+    "J&K": ["JAT", "SVDK"],
+    "HIMACHAL PRADESH": ["KLK", "UHL"],
+    "HP": ["KLK", "UHL"],
+}
+
+
+def deduplicate_routes(routes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Deduplicates itineraries based on train number, path, and departure time.
+    Keeps the option with the highest booking confidence (CONFIRMED > RAC > WAITLIST)
+    and lowest fare.
+    """
+    seen_keys: Dict[Any, Tuple[float, Dict[str, Any]]] = {}
+    confidence_rank = {"CONFIRMED": 3, "RAC": 2, "WAITLIST": 1, "REGRET": 0}
+
+    for r in routes:
+        legs = r.get("legs", [])
+        if not legs:
+            continue
+        leg_keys = tuple(
+            (leg.get("train_no", ""), leg.get("from_code", ""), leg.get("to_code", ""), leg.get("departure", ""))
+            for leg in legs
+        )
+        conf = r.get("booking_confidence", "WAITLIST")
+        score = confidence_rank.get(conf, 1) * 10000 - (r.get("best_fare") or 99999)
+
+        if leg_keys not in seen_keys:
+            seen_keys[leg_keys] = (score, r)
+        else:
+            prev_score, _ = seen_keys[leg_keys]
+            if score > prev_score:
+                seen_keys[leg_keys] = (score, r)
+
+    deduped = [item[1] for item in seen_keys.values()]
+    deduped.sort(key=lambda x: (
+        confidence_rank.get(x.get("booking_confidence"), 0),
+        -(x.get("best_fare") or 99999)
+    ), reverse=True)
+    return deduped
+
 
 def resolve_station_code(query: str) -> str:
-    """Resolves station code from code or city name, filtering temporal words and typos."""
+    """Resolves station code from code, city name, or state name, filtering temporal words and typos."""
     if not query:
         return ""
     import re
     import difflib
 
     raw = query.strip()
-    # Strip temporal and non-station stopwords that often get appended (e.g. 'jodphur tomor' -> 'jodphur')
-    words_to_strip = r"\b(tomorrow|tomor|tmrw|tomo|2moro|today|tdy|tonight|next|curren|current|train|trains|ticket|tickets|fast|express|stops?|station|city)\b"
+    words_to_strip = r"\b(tomorrow|tomor|tmrw|tomo|2moro|today|tdy|tonight|next|curren|current|train|trains|ticket|tickets|fast|express|stops?|station|stations|city|state|any|all|stn|jn|junction|railway)\b"
     cleaned = re.sub(words_to_strip, "", raw, flags=re.IGNORECASE).strip()
     target = cleaned if cleaned else raw
     q = target.upper()
 
+    # 1. State check (e.g. 'UP', 'Karnataka', 'Maharashtra')
+    if q in STATE_TO_PRIMARY_HUBS:
+        return STATE_TO_PRIMARY_HUBS[q][0]
+
+    # 2. Known station code exact match
     if q in STATIONS_BY_CODE:
         return q
+
+    # 3. Known city name match
     if q in CITY_TO_DEFAULT_CODE:
         return CITY_TO_DEFAULT_CODE[q]
 
+    # 4. Search dataset
     matches = search_stations(target, limit=5)
     if matches:
         return matches[0]["code"]
 
-    # Fuzzy match against known city synonyms
+    # 5. Fuzzy match against known city synonyms
     close_cities = difflib.get_close_matches(target.lower(), [k.lower() for k in CITY_TO_DEFAULT_CODE.keys()], n=1, cutoff=0.7)
     if close_cities:
         return CITY_TO_DEFAULT_CODE[close_cities[0].upper()]
@@ -152,64 +243,99 @@ async def search_trains(
     Search direct and connecting trains, same-train split seats, and point-beyond hacks between stations.
     
     Args:
-        origin: Station code (e.g. NDLS, VGLJ) or city name (e.g. Delhi, Jhansi).
-        destination: Station code (e.g. SBC, CSMT) or city name (e.g. Bangalore, Mumbai).
+        origin: Station code (e.g. NDLS, VGLJ), city name (e.g. Delhi, Jhansi), or Indian State (e.g. UP, Maharashtra).
+        destination: Station code (e.g. SBC, CSMT), city name (e.g. Bangalore, Mumbai), or Indian State.
         date: Travel date in DD-MM-YYYY or YYYY-MM-DD format.
         quota: Quota code: GN (General), TQ (Tatkal), PT (Premium Tatkal), LD (Ladies), SS (Senior Citizen). Default: GN.
         preferred_class: Optional travel class code: 1A, 2A, 3A, 3E, SL, CC, EC, 2S.
         max_budget: Maximum ticket fare in INR (e.g. 1500).
         confirmed_only: If True, only returns routes with CONFIRMED seat status.
     """
-    src = resolve_station_code(origin)
-    dst = resolve_station_code(destination)
-    if not src or not dst:
+    import re
+    words_to_strip = r"\b(tomorrow|tomor|tmrw|tomo|2moro|today|tdy|tonight|next|curren|current|train|trains|ticket|tickets|fast|express|stops?|station|stations|city|state|any|all|stn|jn|junction|railway)\b"
+    clean_orig = re.sub(words_to_strip, "", origin.strip(), flags=re.IGNORECASE).strip() or origin.strip()
+    clean_dest = re.sub(words_to_strip, "", destination.strip(), flags=re.IGNORECASE).strip() or destination.strip()
+    orig_upper = clean_orig.upper()
+    dest_upper = clean_dest.upper()
+
+    # Determine origin hubs: check if state or cluster
+    if orig_upper in STATE_TO_PRIMARY_HUBS:
+        orig_hubs = STATE_TO_PRIMARY_HUBS[orig_upper][:2]
+    else:
+        src = resolve_station_code(clean_orig)
+        orig_hubs = [src] if src else []
+
+    # Determine destination hubs
+    if dest_upper in STATE_TO_PRIMARY_HUBS:
+        dest_hubs = STATE_TO_PRIMARY_HUBS[dest_upper][:1]
+    else:
+        dst = resolve_station_code(clean_dest)
+        dest_hubs = [dst] if dst else []
+
+    if not orig_hubs or not dest_hubs:
         return {
             "status": "error",
             "message": f"Could not resolve stations for origin '{origin}' or destination '{destination}'."
-        }
-    if src == dst:
-        return {
-            "status": "error",
-            "message": "Origin and destination stations cannot be the same."
         }
 
     norm_date = normalize_date_ddmmyyyy(date)
 
     try:
-        ranked = await _engine.search_all(
-            origin_code=src,
-            dest_code=dst,
-            doj=norm_date,
-            quota=quota,
-            preferred_class=preferred_class
-        )
+        tasks = []
+        for o in orig_hubs:
+            for d in dest_hubs:
+                if o != d:
+                    tasks.append(_engine.search_all(
+                        origin_code=o,
+                        dest_code=d,
+                        doj=norm_date,
+                        quota=quota,
+                        preferred_class=preferred_class
+                    ))
+
+        if not tasks:
+            return {
+                "status": "error",
+                "message": "Origin and destination stations cannot be the same."
+            }
+
+        all_results = await asyncio.gather(*tasks)
+        all_itins = [it for res_list in all_results for it in res_list]
 
         # Apply filtering
-        filtered = ranked
+        filtered = all_itins
         if confirmed_only:
             filtered = [r for r in filtered if r.booking_confidence == "CONFIRMED"]
         if max_budget and max_budget > 0:
             filtered = [r for r in filtered if r.best_fare > 0 and r.best_fare <= max_budget]
 
-        serialized = [_engine._serialize_itin(it, quota=quota) for it in filtered[:25]]
-        confirmed_count = sum(1 for it in ranked if it.booking_confidence == "CONFIRMED")
-        lowest_fare = min((it.best_fare for it in ranked if it.best_fare > 0), default=0)
+        serialized = [_engine._serialize_itin(it, quota=quota) for it in filtered]
+        deduped = deduplicate_routes(serialized)
+
+        confirmed_count = sum(1 for it in deduped if it.get("booking_confidence") == "CONFIRMED")
+        lowest_fare = min((it.get("best_fare", 0) for it in deduped if it.get("best_fare", 0) > 0), default=0)
+
+        primary_src = orig_hubs[0]
+        primary_dst = dest_hubs[0]
 
         return {
             "status": "success",
-            "origin": src,
-            "destination": dst,
+            "origin": primary_src,
+            "destination": primary_dst,
             "date": norm_date,
             "quota": quota,
-            "total_evaluated": len(ranked),
-            "matching_routes_count": len(filtered),
+            "total_evaluated": len(all_itins),
+            "matching_routes_count": len(deduped),
             "confirmed_count": confirmed_count,
             "lowest_fare": lowest_fare,
-            "routes": serialized
+            "routes": deduped[:25]
         }
     except Exception as e:
-        logger.exception("search_trains error")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Search failed for {origin} -> {destination}: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 
 @tool

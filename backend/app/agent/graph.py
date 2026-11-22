@@ -30,28 +30,33 @@ except ImportError:
     StateGraph = None
 
 try:
-    from app.agent.tools import ALL_AGENT_TOOLS, TOOLS_BY_NAME
+    from app.agent.tools import ALL_AGENT_TOOLS, TOOLS_BY_NAME, deduplicate_routes, STATE_TO_PRIMARY_HUBS
     from app.agent.fallback_agent import SmartFallbackAgent
 except ImportError:
-    from backend.app.agent.tools import ALL_AGENT_TOOLS, TOOLS_BY_NAME
+    from backend.app.agent.tools import ALL_AGENT_TOOLS, TOOLS_BY_NAME, deduplicate_routes, STATE_TO_PRIMARY_HUBS
     from backend.app.agent.fallback_agent import SmartFallbackAgent
 
 logger = logging.getLogger("IrctcAgent.Graph")
 
 SYSTEM_PROMPT_TEMPLATE = """You are IRCTC AGENT, the official, highly intelligent, and autonomous Indian Railways AI assistant.
 Your name is strictly **IRCTC AGENT**. You are NOT ChatGPT, you are NOT developed by OpenAI, and you do NOT lack internet tools or live data.
-You have real-time algorithmic tools for Indian Railways and live seat availability.
+You have real-time algorithmic tools for Indian Railways and live seat availability across all 8,566 stations.
 
 Current Date Context:
 - Today's Date: {today_str} ({day_name})
 - Tomorrow's Date: {tomorrow_str}
 
 Guidelines & Capabilities:
-1. Travel Searches: When the user asks to find trains, tickets, or seat availability, ALWAYS invoke the `search_trains` tool. Map cities to station codes (e.g. Delhi -> NDLS, Mumbai -> CSMT, Bangalore -> SBC, Jodhpur -> JU, Jhansi -> VGLJ). Always pass the correct date in DD-MM-YYYY format.
-2. Timetables & Schedules: For train stops, timetable, or platform queries, invoke `get_train_schedule`.
+1. Travel Searches: When the user asks to find trains, tickets, or seat availability, ALWAYS invoke the `search_trains` tool.
+   - City & Station Mapping: Map cities to station codes (e.g. Delhi -> NDLS, Mumbai -> CSMT, Bangalore -> SBC, Jodhpur -> JU, Jhansi -> VGLJ, Kolkata -> HWH, Chennai -> MAS).
+   - State-Level Queries: If the user asks for travel from or to an Indian State (e.g. 'UP any station', 'trains from UP to Bangalore', 'Maharashtra to Delhi', 'Bihar to Bangalore'), you can pass the state name directly (e.g. origin='UP', destination='Bangalore') or search major hubs like Lucknow (LKO), Kanpur (CNB), Varanasi (BSB), Patna (PNBE), or Pune (PUNE). The tool will automatically expand and search major corridor hubs.
+   - Date Ranges (e.g. '26 Dec to 31 Dec'): Call `search_trains` on the starting date (e.g. 26-12-2026). Summarize top available and confirmed options, and invite the user if they'd like to check specific subsequent dates in the window.
+   - Dates: Always pass dates in DD-MM-YYYY format.
+2. Timetables & Schedules: For train stops, timetable, intermediate halts, or platform queries, invoke `get_train_schedule`.
 3. Charting Status: For questions on chart preparation or vacancy charts, invoke `get_charting_status`.
 4. Rules & Intel: For cancellation charges, refund rules, RAC rules, Tatkal timings, senior citizen concessions, or luggage allowances, explain accurately or use `web_search_rail_intel`.
-5. Conversational & Wit:
+5. Conversational & Multilingual:
+   - Understand English, Hindi, and Hinglish queries seamlessly (e.g. 'sabse sasti train batao', 'Delhi se Mumbai kal jana hai confirmed seat chahiye').
    - For casual greetings, jokes, philosophical queries, or emotional reactions (e.g. 'lol', 'tell me a joke', 'who are you', 'how are you', 'another one'), converse naturally, dynamically, and with cultural wit and humor like an experienced Indian train traveler.
    - NEVER output empty strings or break character.
 6. Formatting: Present train options with clean markdown tables and bullet highlights. Always highlight confirmed options, cheapest fares, and any same-train split lifehacks.
@@ -118,6 +123,7 @@ class AgentState(TypedDict):
 
 DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "groq")
 DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
+DEFAULT_GROQ_KEY = os.getenv("GROQ_API_KEY", "")
 DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen/qwen3.8-27b")
 DEFAULT_OLLAMA_ENDPOINT = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
@@ -132,7 +138,7 @@ def get_chat_model(user_config: Dict[str, Any]):
     # Check environment variable fallbacks if user didn't enter key
     if not api_key:
         if provider in ["groq", "default", "auto"]:
-            api_key = os.getenv("GROQ_API_KEY", "")
+            api_key = DEFAULT_GROQ_KEY
         elif provider == "ollama":
             api_key = os.getenv("OLLAMA_API_KEY", "")
         elif provider == "gemini":
@@ -143,7 +149,7 @@ def get_chat_model(user_config: Dict[str, Any]):
             api_key = os.getenv("OPENROUTER_API_KEY", "")
 
     # 1. Groq Cloud (Primary Cloud Provider)
-    groq_key = api_key if provider == "groq" else os.getenv("GROQ_API_KEY", "")
+    groq_key = api_key if provider == "groq" else (os.getenv("GROQ_API_KEY") or DEFAULT_GROQ_KEY)
     if provider in ["groq", "default", "auto"] or groq_key:
         if groq_key:
             try:
@@ -180,7 +186,10 @@ def get_chat_model(user_config: Dict[str, Any]):
     # 3. Google Gemini
     if provider == "gemini":
         if not api_key:
-            logger.info("No Gemini API key provided, using SmartFallbackAgent")
+            logger.info("No Gemini API key provided, checking Groq")
+            if DEFAULT_GROQ_KEY:
+                from langchain_openai import ChatOpenAI
+                return ChatOpenAI(base_url="https://api.groq.com/openai/v1", api_key=DEFAULT_GROQ_KEY, model="qwen/qwen3.8-27b")
             return None
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -199,7 +208,10 @@ def get_chat_model(user_config: Dict[str, Any]):
     elif provider in ["openai", "custom"]:
         openai_base = endpoint or os.getenv("OPENAI_BASE_URL", "")
         if not api_key and not openai_base:
-            logger.info("No OpenAI API key provided, using SmartFallbackAgent")
+            logger.info("No OpenAI API key provided, checking Groq")
+            if DEFAULT_GROQ_KEY:
+                from langchain_openai import ChatOpenAI
+                return ChatOpenAI(base_url="https://api.groq.com/openai/v1", api_key=DEFAULT_GROQ_KEY, model="qwen/qwen3.8-27b")
             return None
         try:
             from langchain_openai import ChatOpenAI
@@ -220,7 +232,7 @@ def get_chat_model(user_config: Dict[str, Any]):
     # 5. Ollama
     elif provider == "ollama":
         base_url = endpoint or os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_ENDPOINT)
-        # Fast-fail if running in cloud container and pointing to local host without daemon
+        # Fast-fail if running in cloud container or unreachable localhost -> route to Groq
         is_cloud = bool(
             os.getenv("X_ZOHO_CATALYST_LISTEN_PORT")
             or os.getenv("CATALYST_ENV")
@@ -228,23 +240,18 @@ def get_chat_model(user_config: Dict[str, Any]):
             or os.getenv("RENDER")
         )
         is_localhost = "localhost" in base_url or "127.0.0.1" in base_url
-        if is_cloud and is_localhost:
-            logger.info("Cloud deployment detected with local Ollama URL; fast-routing to SmartFallbackAgent")
-            return None
-
-        # Fast socket probe if localhost to avoid 45s TCP connect timeout
-        if is_localhost:
-            import socket
-            from urllib.parse import urlparse
+        if (is_cloud and is_localhost) or DEFAULT_GROQ_KEY:
             try:
-                parsed = urlparse(base_url)
-                probe_host = parsed.hostname or "127.0.0.1"
-                probe_port = parsed.port or 11434
-                with socket.create_connection((probe_host, probe_port), timeout=0.15):
-                    pass
-            except Exception:
-                logger.info(f"Ollama daemon not reachable at {base_url}; fast-routing to SmartFallbackAgent")
-                return None
+                from langchain_openai import ChatOpenAI
+                return ChatOpenAI(
+                    base_url="https://api.groq.com/openai/v1",
+                    api_key=DEFAULT_GROQ_KEY,
+                    model="qwen/qwen3.8-27b",
+                    temperature=0.6,
+                    timeout=25.0
+                )
+            except Exception as e:
+                logger.warning(f"Failed to route from Ollama to Groq: {e}")
 
         try:
             from langchain_openai import ChatOpenAI
@@ -430,11 +437,14 @@ class IrctcAgentOrchestrator:
                 yield {"type": "delta", "content": final_text[i:i + chunk_size]}
                 await asyncio.sleep(0.01)
 
+            # Deduplicate captured routes and prioritize confirmed seats
+            deduped_routes = deduplicate_routes(captured_routes)
+
             yield {
                 "type": "complete",
                 "text": final_text,
                 "steps": all_steps,
-                "routes": captured_routes,
+                "routes": deduped_routes,
                 "suggestions": [
                     "Show cheapest options",
                     "Check next day availability",
