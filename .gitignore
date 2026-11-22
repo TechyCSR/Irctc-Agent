@@ -9,3 +9,6 @@ catalyst-debug.log
 .catalyst/
 .catalystrc
 backend/lib/
+.env
+*.env
+backend/.env

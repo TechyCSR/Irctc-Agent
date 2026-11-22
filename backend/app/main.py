@@ -19,6 +19,10 @@ for p in [_root_dir, _backend_dir, _current_dir]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from dotenv import load_dotenv
+load_dotenv()
+load_dotenv(os.path.join(_backend_dir, ".env"))
+
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -418,10 +422,19 @@ async def get_agent_models():
     return {
         "providers": [
             {
+                "id": "ollama",
+                "name": "Ollama / Cloud Ollama",
+                "description": "High performance local/cloud inference (Default: gemma4:31b)",
+                "default": True,
+                "requiresKey": False,
+                "endpointDefault": "http://localhost:11434/v1",
+                "models": ["gemma4:31b", "llama3.2", "qwen2.5", "mistral"]
+            },
+            {
                 "id": "auto",
                 "name": "Smart IRCTC Engine (Free / No Key Required)",
                 "description": "Fast heuristic NLP agent executing live railway search tools directly",
-                "default": True,
+                "default": False,
                 "requiresKey": False
             },
             {
@@ -439,15 +452,6 @@ async def get_agent_models():
                 "default": False,
                 "requiresKey": True,
                 "models": ["gpt-4o-mini", "gpt-4o"]
-            },
-            {
-                "id": "ollama",
-                "name": "Ollama / Cloud Ollama / Local",
-                "description": "Self-hosted or cloud OpenAI-compatible endpoint",
-                "default": False,
-                "requiresKey": False,
-                "endpointDefault": "http://localhost:11434/v1",
-                "models": ["llama3.2", "qwen2.5", "mistral"]
             }
         ]
     }

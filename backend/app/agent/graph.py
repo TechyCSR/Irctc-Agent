@@ -52,9 +52,13 @@ class AgentState(TypedDict):
     suggestions: List[str]
 
 
+DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:31b")
+DEFAULT_OLLAMA_ENDPOINT = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+
+
 def get_chat_model(user_config: Dict[str, Any]):
     """Instantiates the requested LLM provider or returns None for fallback."""
-    provider = (user_config.get("provider") or "auto").strip().lower()
+    provider = (user_config.get("provider") or "ollama").strip().lower()
     api_key = user_config.get("apiKey") or ""
     model_name = user_config.get("model") or ""
     endpoint = user_config.get("endpoint") or ""
@@ -66,7 +70,7 @@ def get_chat_model(user_config: Dict[str, Any]):
         elif provider == "openai":
             api_key = os.getenv("OPENAI_API_KEY", "")
         elif provider == "ollama":
-            api_key = os.getenv("OLLAMA_API_KEY", "ollama")
+            api_key = os.getenv("OLLAMA_API_KEY", "")
 
     if provider == "gemini":
         if not api_key:
@@ -105,11 +109,12 @@ def get_chat_model(user_config: Dict[str, Any]):
     elif provider == "ollama":
         try:
             from langchain_openai import ChatOpenAI
-            base_url = endpoint or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-            m = model_name or "llama3.2"
+            base_url = endpoint or os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_ENDPOINT)
+            m = model_name or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+            key = api_key or os.getenv("OLLAMA_API_KEY", "ollama")
             return ChatOpenAI(
                 base_url=base_url,
-                api_key=api_key or "ollama",
+                api_key=key,
                 model=m,
                 temperature=0.2,
                 timeout=45
