@@ -38,17 +38,74 @@ except ImportError:
 
 logger = logging.getLogger("IrctcAgent.Graph")
 
-SYSTEM_PROMPT = """You are Antigravity IRCTC Copilot, an elite, highly knowledgeable, and charismatic AI travel assistant specializing in Indian Railways (IRCTC).
-You possess the natural conversational brilliance, multi-turn memory, and empathy of ChatGPT/Claude, paired with real-time algorithmic tools for Indian Railways.
+SYSTEM_PROMPT_TEMPLATE = """You are IRCTC AGENT, the official, highly intelligent, and autonomous Indian Railways AI assistant.
+Your name is strictly **IRCTC AGENT**. You are NOT ChatGPT, you are NOT developed by OpenAI, and you do NOT lack internet tools or live data.
+You have real-time algorithmic tools for Indian Railways and live seat availability.
 
-Personality & Dialogue Guidelines:
-- Speak naturally with cultural warmth, humor, and intelligence like an experienced veteran Indian train traveler.
-- For chitchat, greetings, jokes, philosophical questions, or emotional reactions (e.g. 'lol', 'tell me a joke', 'who are you', 'how are you', 'aanother one'), reply with genuine humor and wit. DO NOT call railway tools for casual banter.
-- Track conversation history attentively: if the user asks a follow-up (e.g. 'another one', 'what about 3A?', 'how about tomorrow?', 'is it cheaper?'), maintain the active journey context seamlessly.
-- ONLY invoke railway tools when actual travel data is needed (e.g. searching trains, schedules, 5-day availability, charting, or official rules).
-- Resolve station names intelligently: handle typos and common spellings (e.g. 'jodphur' -> JODHPUR / JU, 'banglore' -> BANGALORE / SBC, 'bhoap' -> BHOPAL / BPL).
-- Always highlight confirmed options, lowest fares, and any same-train split lifehacks.
+Current Date Context:
+- Today's Date: {today_str} ({day_name})
+- Tomorrow's Date: {tomorrow_str}
+
+Guidelines & Capabilities:
+1. Travel Searches: When the user asks to find trains, tickets, or seat availability, ALWAYS invoke the `search_trains` tool. Map cities to station codes (e.g. Delhi -> NDLS, Mumbai -> CSMT, Bangalore -> SBC, Jodhpur -> JU, Jhansi -> VGLJ). Always pass the correct date in DD-MM-YYYY format.
+2. Timetables & Schedules: For train stops, timetable, or platform queries, invoke `get_train_schedule`.
+3. Charting Status: For questions on chart preparation or vacancy charts, invoke `get_charting_status`.
+4. Rules & Intel: For cancellation charges, refund rules, RAC rules, Tatkal timings, senior citizen concessions, or luggage allowances, explain accurately or use `web_search_rail_intel`.
+5. Conversational & Wit:
+   - For casual greetings, jokes, philosophical queries, or emotional reactions (e.g. 'lol', 'tell me a joke', 'who are you', 'how are you', 'another one'), converse naturally, dynamically, and with cultural wit and humor like an experienced Indian train traveler.
+   - NEVER output empty strings or break character.
+6. Formatting: Present train options with clean markdown tables and bullet highlights. Always highlight confirmed options, cheapest fares, and any same-train split lifehacks.
 """
+
+
+def make_compact_tool_payload(fn_name: str, result: Any) -> str:
+    """Produces a clean, token-efficient summary for LLMs to stay well within ITPM/rate limits."""
+    if not isinstance(result, dict):
+        return str(result)[:1500]
+
+    if fn_name == "search_trains":
+        routes = result.get("routes", [])
+        top_opts = []
+        for r in routes[:5]:
+            legs = r.get("legs", [])
+            leg0 = legs[0] if legs else {}
+            leg_last = legs[-1] if legs else {}
+            top_opts.append({
+                "train_name": leg0.get("train_name"),
+                "train_no": leg0.get("train_no"),
+                "departure": leg0.get("departure"),
+                "arrival": leg_last.get("arrival"),
+                "total_duration": r.get("total_duration_str"),
+                "fare": r.get("best_fare"),
+                "confidence": r.get("booking_confidence"),
+                "status_summary": r.get("summary"),
+                "split_hack": r.get("lifehack_type")
+            })
+
+        compact = {
+            "origin": result.get("origin"),
+            "destination": result.get("destination"),
+            "date": result.get("date"),
+            "total_options_found": len(routes),
+            "confirmed_count": result.get("confirmed_count", 0),
+            "lowest_fare": result.get("lowest_fare", 0),
+            "top_recommendations": top_opts
+        }
+        return json.dumps(compact, indent=2)
+
+    elif fn_name == "get_train_schedule":
+        stops = result.get("stops", [])
+        return json.dumps({
+            "train_no": result.get("train_no"),
+            "train_name": result.get("train_name"),
+            "source": result.get("source"),
+            "destination": result.get("destination"),
+            "total_duration": result.get("total_duration"),
+            "total_stops": len(stops),
+            "stops_preview": stops[:8]
+        }, indent=2)
+
+    return json.dumps(result)[:1500]
 
 
 class AgentState(TypedDict):
@@ -59,42 +116,47 @@ class AgentState(TypedDict):
     suggestions: List[str]
 
 
-DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:31b")
+DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "groq")
+DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
+DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen/qwen3.8-27b")
 DEFAULT_OLLAMA_ENDPOINT = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
 
 def get_chat_model(user_config: Dict[str, Any]):
     """Instantiates the requested LLM provider or returns None for fallback."""
-    provider = (user_config.get("provider") or "ollama").strip().lower()
+    provider = (user_config.get("provider") or DEFAULT_PROVIDER).strip().lower()
     api_key = user_config.get("apiKey") or ""
     model_name = user_config.get("model") or ""
     endpoint = user_config.get("endpoint") or ""
 
     # Check environment variable fallbacks if user didn't enter key
     if not api_key:
-        if provider == "gemini":
+        if provider in ["groq", "default", "auto"]:
+            api_key = os.getenv("GROQ_API_KEY", "")
+        elif provider == "ollama":
+            api_key = os.getenv("OLLAMA_API_KEY", "")
+        elif provider == "gemini":
             api_key = os.getenv("GEMINI_API_KEY", "")
         elif provider == "openai":
             api_key = os.getenv("OPENAI_API_KEY", "")
-        elif provider == "ollama":
-            api_key = os.getenv("OLLAMA_API_KEY", "")
-        elif provider == "groq":
-            api_key = os.getenv("GROQ_API_KEY", "")
         elif provider == "openrouter":
             api_key = os.getenv("OPENROUTER_API_KEY", "")
 
-    # 1. Groq Cloud (Ultra-fast inference)
+    # 1. Groq Cloud (Primary Cloud Provider)
     groq_key = api_key if provider == "groq" else os.getenv("GROQ_API_KEY", "")
-    if provider == "groq" or (provider in ["auto", "default"] and groq_key):
+    if provider in ["groq", "default", "auto"] or groq_key:
         if groq_key:
             try:
                 from langchain_openai import ChatOpenAI
+                chosen_model = model_name or os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+                if chosen_model in ["qwen3.8", "qwen", "qwen-27b", "qwen3.8-27b"]:
+                    chosen_model = "qwen/qwen3.8-27b"
                 return ChatOpenAI(
                     base_url="https://api.groq.com/openai/v1",
                     api_key=groq_key,
-                    model=model_name or "llama-3.3-70b-versatile",
-                    temperature=0.3,
-                    timeout=15.0
+                    model=chosen_model,
+                    temperature=0.6,
+                    timeout=25.0
                 )
             except Exception as e:
                 logger.warning(f"Failed to initialize Groq model: {e}")
@@ -276,8 +338,19 @@ class IrctcAgentOrchestrator:
 
             model_with_tools = model.bind_tools(ALL_AGENT_TOOLS)
 
-            # Build message history for LangChain
-            lc_messages: List[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
+            # Build message history for LangChain with dynamic date context
+            from datetime import datetime, timedelta
+            today_str = datetime.now().strftime("%d-%m-%Y")
+            day_name = datetime.now().strftime("%A, %d %B %Y")
+            tomorrow_str = (datetime.now() + timedelta(days=1)).strftime("%d-%m-%Y")
+
+            dynamic_system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+                today_str=today_str,
+                day_name=day_name,
+                tomorrow_str=tomorrow_str
+            )
+
+            lc_messages: List[BaseMessage] = [SystemMessage(content=dynamic_system_prompt)]
             for m in messages_history[-8:]:
                 role = m.get("role")
                 content = m.get("content", "")
@@ -294,8 +367,10 @@ class IrctcAgentOrchestrator:
 
             # Check if LLM requested tool calls
             tool_calls = getattr(response, "tool_calls", []) or []
+            tool_iterations = 0
 
-            while tool_calls:
+            while tool_calls and tool_iterations < 2:
+                tool_iterations += 1
                 lc_messages.append(response)
 
                 for tc in tool_calls:
@@ -335,13 +410,15 @@ class IrctcAgentOrchestrator:
                     all_steps.append(step_finish)
                     yield {"type": "step", "step": step_finish}
 
+                    # Compact tool payload to protect against token rate limits
+                    compact_content = make_compact_tool_payload(fn_name, t_res)
                     tool_msg = ToolMessage(
-                        content=json.dumps(t_res) if not isinstance(t_res, str) else t_res,
+                        content=compact_content,
                         tool_call_id=call_id
                     )
                     lc_messages.append(tool_msg)
 
-                # Next invocation after tools
+                # Next invocation after all tool calls in round are answered
                 response = await model_with_tools.ainvoke(lc_messages)
                 tool_calls = getattr(response, "tool_calls", []) or []
 
