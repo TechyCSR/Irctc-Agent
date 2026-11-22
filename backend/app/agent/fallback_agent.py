@@ -172,14 +172,128 @@ class SmartFallbackAgent:
         """Processes the natural language query, runs tools, and formats the reply."""
         text = message.strip()
         lower = text.lower()
+        clean_text = re.sub(r"[^\w\s]", "", lower).strip()
 
         steps: List[Dict[str, Any]] = []
         routes: List[Dict[str, Any]] = []
 
-        # 1. Greetings / Help (strictly whole-word match, excluded if travel intent exists)
-        is_greeting = bool(re.search(r"\b(hi|hello|hey|help|namaste|who are you|what can you do|features|how does this work)\b", lower))
-        has_travel_intent = bool(re.search(r"\b(from|to|train|trains|ticket|tickets|station|pnr|schedule|route|berth|seat|seats|availability|fare)\b", lower))
-        if is_greeting and not has_travel_intent and len(text.split()) <= 10:
+        # =========================================================================
+        # 1. GENERAL CONVERSATION & CHITCHAT (Zero Tools, Natural Friendly Assistant)
+        # =========================================================================
+
+        # A. Identity / Name / Creator
+        if re.search(r"\b(what(s|\s+is)?\s+your\s+name|who\s+are\s+you|who\s+made\s+you|who\s+created\s+you|what\s+are\s+you|your\s+name)\b", clean_text):
+            return {
+                "text": (
+                    "👋 **Namaste! I am Antigravity IRCTC Copilot.**\n\n"
+                    "I am your autonomous Indian Railways travel assistant and ticket intelligence engine. "
+                    "I can help you:\n"
+                    "• 🎫 **Discover Confirmed Tickets:** Find direct trains, same-train split-seat hacks, and alternate boarding routes.\n"
+                    "• ⚡ **Tatkal & Quotas:** Check Tatkal timings, Premium Tatkal surge rules, Ladies, and Senior Citizen quotas.\n"
+                    "• 🕒 **Live Timetables & Schedules:** Query halts, arrival/departure times, and platform numbers.\n"
+                    "• 📋 **Railway Rules & Policies:** Cancellation charges, refund rules, RAC rules, and luggage allowances.\n\n"
+                    "How can I help you with your journey today?"
+                ),
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "Trains from Delhi to Mumbai tomorrow in 3A",
+                    "From Jhansi to Bangalore on 28 Dec under 1500",
+                    "What are the Tatkal booking timings and refund rules?",
+                    "Compare 5-day seat availability from NDLS to SBC"
+                ]
+            }
+
+        # B. Laughter / Fun / Reactions (lol, haha, lmao, etc.)
+        if re.search(r"\b(lol|lmao|rofl|haha+|hehe+|xd|funny|hilarious|bhai|yaar)\b", clean_text) and not any(k in clean_text for k in ["train", "ticket", "station", "schedule", "pnr", "from", "to"]):
+            return {
+                "text": (
+                    "😄 Glad I could bring a smile! Traveling on Indian Railways is full of fun moments—"
+                    "from Uncle ji asking for the lower berth saying *'beta meri kamar me dard hai'*, "
+                    "to fighting for the lone phone charging socket in Sleeper class! 🔌🚆\n\n"
+                    "Are you planning a trip somewhere soon, or need help finding confirmed seats?"
+                ),
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "Delhi to Mumbai tomorrow 3A confirmed only",
+                    "Jhansi to Bangalore on 28 Dec under 1500",
+                    "Tell me a railway joke",
+                    "What is RAC ticket?"
+                ]
+            }
+
+        # C. Jokes / Entertainment
+        if re.search(r"\b(tell\s+me\s+a\s+joke|joke|make\s+me\s+laugh|something\s+funny)\b", clean_text):
+            return {
+                "text": (
+                    "Here's a classic Indian Railways reality! 🚆😂\n\n"
+                    "**Question:** Why do lower berths in Indian trains have the highest gravitational pull in the universe?\n\n"
+                    "**Answer:** Because the moment the train starts moving, an uncle appears out of nowhere and says:\n"
+                    "> *\"Beta, meri tabiyat theek nahi hai... thoda upper berth pe chale jaoge kya please?\"* 🧳\n\n"
+                    "Want to book a confirmed middle or upper berth so no one asks to swap? Let me know your origin and destination!"
+                ),
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "Trains from Delhi to Mumbai tomorrow",
+                    "What is difference between 3E and 3A?",
+                    "Check chart preparation time"
+                ]
+            }
+
+        # D. How are you / Status
+        if re.search(r"\b(how\s+are\s+you|how\s+are\s+u|hows\s+it\s+going|wassup|whats\s+up|kya\s+haal\s+hai|sab\s+badhiya)\b", clean_text):
+            return {
+                "text": (
+                    "I'm running on green signals and cruising right on time, just like the Vande Bharat Express! 🚅💨\n\n"
+                    "How are you doing today? Ready to plan your next rail adventure, check train availability, or verify Tatkal rules?"
+                ),
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "Trains from Delhi to Mumbai tomorrow in 3A",
+                    "Jhansi to Bangalore on 28 Dec under 1500",
+                    "When does chart prepare for today evening?"
+                ]
+            }
+
+        # E. Gratitude / Appreciation
+        if re.search(r"\b(thank\s+you|thanks|thx|thanku|appreciate\s+it|good\s+job|great\s+job|awesome|shukriya|dhanyawad)\b", clean_text) and not any(k in clean_text for k in ["train", "ticket", "book"]):
+            return {
+                "text": (
+                    "You're very welcome! 😊 Always happy to assist you with Indian Railways travel.\n\n"
+                    "If you need anything else—like finding another train route, checking seat probability, or reading refund rules—just ask anytime. Safe travels! 🚆✨"
+                ),
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "Check schedule for 12628",
+                    "Compare 5 days NDLS to SBC",
+                    "What are the Tatkal booking timings?"
+                ]
+            }
+
+        # F. Affirmations / Acknowledgments (ok, cool, sure, alright, etc.)
+        if re.search(r"^(ok|okay|cool|alright|sure|got\s+it|fine|understood|yep|yeah|k|nice|perfect)$", clean_text):
+            return {
+                "text": (
+                    "Understood! Whenever you're ready to plan your trip, just type what you need.\n\n"
+                    "For example: *'Find trains from Delhi to Mumbai tomorrow in 3A'* or *'Check Tatkal rules for AC classes'*."
+                ),
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "Trains from Delhi to Mumbai tomorrow 3A",
+                    "Jhansi to Bangalore on 28 Dec under 1500",
+                    "Check chart preparation time for 18:00 departure"
+                ]
+            }
+
+        # G. Greetings / Namaste / Hi / Hello
+        is_greeting = bool(re.search(r"\b(hi|hello|hey|namaste|greetings|good\s+(morning|afternoon|evening))\b", clean_text))
+        has_travel_intent = bool(re.search(r"\b(from|to|train|trains|ticket|tickets|station|pnr|schedule|route|berth|seat|seats|availability|fare)\b", clean_text))
+        if is_greeting and not has_travel_intent and len(text.split()) <= 6:
             return {
                 "text": (
                     "👋 **Namaste! I am your Antigravity IRCTC Copilot.**\n\n"
@@ -191,15 +305,57 @@ class SmartFallbackAgent:
                     "• *'Compare seat availability from NDLS to SBC for the next 5 days'*\n"
                     "• *'When does the chart get prepared for 18:00 departure today?'*"
                 ),
-                "steps": [
-                    {"label": "Understood conversation intent", "type": "thinking"}
-                ],
+                "steps": [],
                 "routes": [],
                 "suggestions": [
                     "Trains from Jhansi to Bangalore on 28 Dec under 1500",
                     "Delhi to Mumbai tomorrow 3A",
                     "Schedule for 12628",
                     "Compare 5 days NDLS to SBC"
+                ]
+            }
+
+        # H. Specific General Railway Concepts (Zero Tools needed, Instant accurate guidance)
+        # What is RAC?
+        if re.search(r"\b(what\s+is\s+rac|explain\s+rac|rac\s+rule|rac\s+meaning|rac\s+ticket)\b", clean_text):
+            return {
+                "text": (
+                    "### 🚆 What is RAC (Reservation Against Cancellation)?\n\n"
+                    "**RAC guarantees travel on the train**, but with a shared seat instead of a full sleeping berth:\n\n"
+                    "1. **Seating Arrangement:** Two passengers with RAC status share one Lower Berth (the Side Lower berth in Sleeper and AC 3-Tier).\n"
+                    "2. **Upgradation to Confirmed:** If any confirmed passenger cancels their ticket or does not board, the TTE upgrades RAC passengers to full berths in sequential order.\n"
+                    "3. **Bedroll & Linen:** RAC passengers in AC classes (2A, 3A, 3E) are provided full complimentary bedroll and blanket.\n"
+                    "4. **Cancellation Rules:** An RAC ticket can be cancelled online up to **30 minutes before scheduled train departure** with minimal clerkage fee (₹60 + GST)."
+                ),
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "When does the first chart prepare?",
+                    "What are Tatkal booking timings?",
+                    "What is difference between 3E and 3A?"
+                ]
+            }
+
+        # What is 3E vs 3A?
+        if re.search(r"\b(difference\s+between\s+3e\s+and\s+3a|3e\s+vs\s+3a|what\s+is\s+3e|economy\s+3ac)\b", clean_text):
+            return {
+                "text": (
+                    "### ❄️ AC 3-Tier (3A) vs AC 3-Tier Economy (3E)\n\n"
+                    "| Feature | Standard AC 3-Tier (3A) | AC 3-Tier Economy (3E) |\n"
+                    "|---|---|---|\n"
+                    "| **Berths per Coach** | 72 berths | **83 berths** (higher density) |\n"
+                    "| **Fare** | Standard base fare | **~6% to 8% Cheaper** than 3A |\n"
+                    "| **Headroom & Space** | Standard spacing | Slightly more compact middle/upper berth spacing |\n"
+                    "| **Amenities** | Shared charging sockets | Individual reading lights & individual USB sockets |\n"
+                    "| **AC Vents** | Overhead aisle diffusers | Personalized directional air vents at every berth |\n"
+                    "| **Linen & Bedroll** | ✅ Included | ✅ Included |"
+                ),
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "Trains from Delhi to Mumbai tomorrow in 3A",
+                    "What is RAC ticket?",
+                    "What are Tatkal booking timings?"
                 ]
             }
 
@@ -338,21 +494,41 @@ class SmartFallbackAgent:
                 from_raw, to_raw = found_cities[0], found_cities[1]
 
         if not from_raw or not to_raw:
-            return {
-                "text": (
-                    "Could you please specify your **origin** and **destination** stations or cities?\n\n"
-                    "For example:\n"
-                    "• *'Trains from New Delhi to Mumbai on 25 Dec'* \n"
-                    "• *'From Jhansi to Bangalore on 28 Dec under 1500'*"
-                ),
-                "steps": [{"label": "Awaiting origin and destination station details", "type": "thinking"}],
-                "routes": [],
-                "suggestions": [
-                    "Trains from Delhi to Mumbai tomorrow",
-                    "Trains from Jhansi to Bangalore on 28 Dec",
-                    "Trains from Lucknow to Bangalore under 1500"
-                ]
-            }
+            # Check if user was actually trying to search for a train or travel
+            has_rail_search_intent = bool(re.search(r"\b(train|trains|ticket|tickets|seat|seats|berth|travel|go|going|book|booking|journey|route|reach|leave)\b", clean_text))
+            if has_rail_search_intent:
+                return {
+                    "text": (
+                        "I would be glad to find the best trains and seats for you! 🚆\n\n"
+                        "Could you please specify both your **origin** and **destination**?\n\n"
+                        "**For example:**\n"
+                        "• *'Trains from New Delhi to Mumbai on 25 Dec in 3A'*\n"
+                        "• *'From Jhansi to Bangalore on 28 Dec under 1500'*"
+                    ),
+                    "steps": [],
+                    "routes": [],
+                    "suggestions": [
+                        "Trains from Delhi to Mumbai tomorrow 3A",
+                        "From Jhansi to Bangalore on 28 Dec under 1500",
+                        "Trains from Lucknow to Bangalore under 1500"
+                    ]
+                }
+            else:
+                return {
+                    "text": (
+                        "I'm your **Antigravity IRCTC Copilot**! 🚆\n\n"
+                        "I can chat with you, explain railway rules, check Tatkal timings, or discover confirmed tickets (including same-train split seats).\n\n"
+                        "If you'd like to find trains, just tell me your starting city and where you want to travel!"
+                    ),
+                    "steps": [],
+                    "routes": [],
+                    "suggestions": [
+                        "Trains from Delhi to Mumbai tomorrow in 3A",
+                        "Jhansi to Bangalore on 28 Dec under 1500",
+                        "What are the Tatkal booking timings and refund rules?",
+                        "What is RAC ticket?"
+                    ]
+                }
 
         date = parse_date_from_text(text) or (datetime.now() + timedelta(days=1)).strftime("%d-%m-%Y")
         budget = parse_budget_from_text(text)
