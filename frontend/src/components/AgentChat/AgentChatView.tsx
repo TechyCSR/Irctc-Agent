@@ -4,21 +4,20 @@ import {
   Square,
   Bot,
   User,
-  Sparkles,
-  Settings,
+  Plus,
   Trash2,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2,
+  Menu,
+  X,
+  MessageSquare,
+  Sparkles,
   ArrowRight,
-  Train,
-  AlertCircle
+  Zap,
 } from 'lucide-react';
-import type { ChatMessage, AgentConfig, AgentStep, RouteItinerary } from '../../types';
-import { streamAgentChat, getStoredAgentConfig } from '../../services/api';
+import type { ChatMessage, ChatSession, AgentStep, RouteItinerary } from '../../types';
+import { streamAgentChat } from '../../services/api';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ItineraryCard } from '../ItineraryCard';
-import { AgentSettingsModal } from './AgentSettingsModal';
+import { LiveActionRow } from './LiveActionRow';
 
 interface AgentChatViewProps {
   onOpenSchedule?: (trainNo: string, trainName: string, boarding: string, alighting: string) => void;
@@ -32,11 +31,35 @@ interface AgentChatViewProps {
 const INITIAL_SUGGESTIONS = [
   'Trains from Jhansi to Bangalore on 28 Dec under 1500',
   'From Delhi to Mumbai tomorrow in 3A confirmed only',
-  'What is the IRCTC chart preparation time for 18:00 departure?',
+  'What are the Tatkal booking timings and refund rules?',
   'Compare 5-day seat availability from NDLS to SBC',
 ];
 
-const LOCAL_STORAGE_MESSAGES_KEY = 'irctc_copilot_chat_history_v1';
+const SESSIONS_STORAGE_KEY = 'irctc_copilot_sessions_v2';
+const ACTIVE_SESSION_STORAGE_KEY = 'irctc_copilot_active_session_id';
+
+function createDefaultWelcomeMessage(): ChatMessage {
+  return {
+    id: `welcome-${Date.now()}`,
+    role: 'assistant',
+    content:
+      "👋 **Namaste! I am your Antigravity IRCTC Copilot.**\n\nI can help you find confirmed train tickets, uncover same-train split seats, check Tatkal quotas, explain cancellation rules, and track live schedules.\n\nType where you want to travel, or select one of the suggested journeys below!",
+    timestamp: Date.now(),
+    status: 'done',
+    suggestions: INITIAL_SUGGESTIONS,
+  };
+}
+
+function createNewSessionObject(title = 'New Travel Query'): ChatSession {
+  const id = `sess-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  return {
+    id,
+    title,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    messages: [createDefaultWelcomeMessage()],
+  };
+}
 
 export const AgentChatView: React.FC<AgentChatViewProps> = ({
   onOpenSchedule,
@@ -46,43 +69,51 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
   onOpenExportShare,
   onSwitchToOptimizer,
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+  // Load saved sessions from localStorage
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_MESSAGES_KEY);
+      const stored = localStorage.getItem(SESSIONS_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [
-      {
-        id: 'msg-welcome',
-        role: 'assistant',
-        content:
-          "👋 **Namaste! I am your Antigravity IRCTC Copilot.**\n\nI can help you find confirmed train tickets, uncover same-train split seats, check tatkal quotas, compare multi-date availability, and track live schedules.\n\nType where you want to travel, or select one of the suggested journeys below!",
-        timestamp: Date.now(),
-        status: 'done',
-        suggestions: INITIAL_SUGGESTIONS,
-      },
-    ];
+    const defaultSess = createNewSessionObject('Welcome to Copilot');
+    return [defaultSess];
+  });
+
+  // Active session ID
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    try {
+      const storedId = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+      if (storedId && sessions.some((s) => s.id === storedId)) {
+        return storedId;
+      }
+    } catch {}
+    return sessions[0]?.id || '';
   });
 
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
-  const [config, setConfig] = useState<AgentConfig>(() => getStoredAgentConfig());
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [expandedStepsMap, setExpandedStepsMap] = useState<Record<string, boolean>>({});
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Save messages to localStorage
+  // Active session object
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const messages = activeSession?.messages || [];
+
+  // Persist sessions to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(LOCAL_STORAGE_MESSAGES_KEY, JSON.stringify(messages.slice(-20)));
+      localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+      if (activeSessionId) {
+        localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, activeSessionId);
+      }
     } catch {}
-  }, [messages]);
+  }, [sessions, activeSessionId]);
 
   // Auto-scroll on new message
   useEffect(() => {
@@ -93,29 +124,44 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
     }
   }, [inputPrompt]);
 
-  const toggleSteps = (msgId: string) => {
-    setExpandedStepsMap((prev) => ({
-      ...prev,
-      [msgId]: !prev[msgId],
-    }));
+  const handleCreateNewSession = () => {
+    const newSess = createNewSessionObject('New Travel Chat');
+    setSessions((prev) => [newSess, ...prev]);
+    setActiveSessionId(newSess.id);
+    setIsSidebarOpen(false);
   };
 
-  const handleClearHistory = () => {
-    if (window.confirm('Clear conversation history?')) {
-      const resetMsg: ChatMessage = {
-        id: `msg-${Date.now()}`,
-        role: 'assistant',
-        content: 'Conversation cleared. How can I help with your railway travel today?',
-        timestamp: Date.now(),
-        status: 'done',
-        suggestions: INITIAL_SUGGESTIONS,
-      };
-      setMessages([resetMsg]);
-      localStorage.removeItem(LOCAL_STORAGE_MESSAGES_KEY);
+  const handleDeleteSession = (idToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (sessions.length <= 1) {
+      // If last session, reset it instead of deleting
+      const fresh = createNewSessionObject('New Travel Chat');
+      setSessions([fresh]);
+      setActiveSessionId(fresh.id);
+      return;
+    }
+
+    const filtered = sessions.filter((s) => s.id !== idToDelete);
+    setSessions(filtered);
+    if (activeSessionId === idToDelete) {
+      setActiveSessionId(filtered[0].id);
+    }
+  };
+
+  const handleClearCurrentChat = () => {
+    if (window.confirm('Clear messages in this conversation?')) {
+      const resetMsg = createDefaultWelcomeMessage();
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? { ...s, messages: [resetMsg], updatedAt: Date.now() }
+            : s
+        )
+      );
     }
   };
 
@@ -130,7 +176,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
   const sendMessage = useCallback(
     async (textToSend: string) => {
       const query = textToSend.trim();
-      if (!query || isStreaming) return;
+      if (!query || isStreaming || !activeSession) return;
 
       const userMsgId = `user-${Date.now()}`;
       const assistantMsgId = `assistant-${Date.now()}`;
@@ -154,8 +200,30 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
         suggestions: [],
       };
 
-      const updatedHistory = [...messages, userMsg];
-      setMessages([...updatedHistory, assistantMsg]);
+      const currentMessages = activeSession.messages;
+      const updatedHistory = [...currentMessages, userMsg];
+
+      // Update session title dynamically from first real query if it's default
+      const sessionTitle =
+        activeSession.title === 'Welcome to Copilot' || activeSession.title === 'New Travel Chat'
+          ? query.length > 30
+            ? query.substring(0, 30) + '...'
+            : query
+          : activeSession.title;
+
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSession.id
+            ? {
+                ...s,
+                title: sessionTitle,
+                updatedAt: Date.now(),
+                messages: [...updatedHistory, assistantMsg],
+              }
+            : s
+        )
+      );
+
       setInputPrompt('');
       setIsStreaming(true);
 
@@ -165,87 +233,125 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
       try {
         await streamAgentChat(
           updatedHistory,
-          config,
           {
             onStep: (step: AgentStep) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id === activeSession.id
                     ? {
-                        ...m,
-                        steps: [...(m.steps || []), step],
+                        ...s,
+                        messages: s.messages.map((m) =>
+                          m.id === assistantMsgId
+                            ? {
+                                ...m,
+                                steps: [...(m.steps || []), step],
+                              }
+                            : m
+                        ),
                       }
-                    : m
+                    : s
                 )
               );
             },
             onDelta: (chunk: string) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id === activeSession.id
                     ? {
-                        ...m,
-                        content: m.content + chunk,
+                        ...s,
+                        messages: s.messages.map((m) =>
+                          m.id === assistantMsgId
+                            ? {
+                                ...m,
+                                content: m.content + chunk,
+                              }
+                            : m
+                        ),
                       }
-                    : m
+                    : s
                 )
               );
             },
             onComplete: (data) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id === activeSession.id
                     ? {
-                        ...m,
-                        content: data.text || m.content,
-                        steps: data.steps && data.steps.length > 0 ? data.steps : m.steps,
-                        routes: data.routes || [],
-                        suggestions: data.suggestions || [],
-                        status: 'done',
+                        ...s,
+                        updatedAt: Date.now(),
+                        messages: s.messages.map((m) =>
+                          m.id === assistantMsgId
+                            ? {
+                                ...m,
+                                content: data.text || m.content,
+                                steps: data.steps && data.steps.length > 0 ? data.steps : m.steps,
+                                routes: data.routes || [],
+                                suggestions: data.suggestions || [],
+                                status: 'done',
+                              }
+                            : m
+                        ),
                       }
-                    : m
+                    : s
                 )
               );
               setIsStreaming(false);
             },
             onError: (err) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id === activeSession.id
                     ? {
-                        ...m,
-                        content:
-                          m.content +
-                          `\n\n⚠️ *Search assistance error: ${err.message || 'Please try again.'}*`,
-                        status: 'error',
+                        ...s,
+                        messages: s.messages.map((m) =>
+                          m.id === assistantMsgId
+                            ? {
+                                ...m,
+                                content:
+                                  m.content +
+                                  `\n\n⚠️ *Search assistance error: ${err.message || 'Please try again.'}*`,
+                                status: 'error',
+                              }
+                            : m
+                        ),
                       }
-                    : m
+                    : s
                 )
               );
               setIsStreaming(false);
             },
           },
+          activeSession.id,
+          undefined,
           abortController.signal
         );
       } catch (err: any) {
         if (!abortController.signal.aborted) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === activeSession.id
                 ? {
-                    ...m,
-                    content:
-                      m.content + `\n\n⚠️ *Request failed: ${err.message || 'Connection error'}*`,
-                    status: 'error',
+                    ...s,
+                    messages: s.messages.map((m) =>
+                      m.id === assistantMsgId
+                        ? {
+                            ...m,
+                            content:
+                              m.content +
+                              `\n\n⚠️ *Request failed: ${err.message || 'Connection error'}*`,
+                            status: 'error',
+                          }
+                        : m
+                    ),
                   }
-                : m
+                : s
             )
           );
+          setIsStreaming(false);
         }
-        setIsStreaming(false);
       }
     },
-    [messages, isStreaming, config]
+    [activeSession, isStreaming]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -255,299 +361,314 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
     }
   };
 
-  const getProviderBadge = () => {
-    switch (config.provider) {
-      case 'gemini':
-        return {
-          label: 'Gemini 2.5 Flash',
-          color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-        };
-      case 'openai':
-        return {
-          label: config.model || 'OpenAI GPT-4o',
-          color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-        };
-      case 'ollama':
-        return {
-          label: config.model ? `Ollama (${config.model})` : 'Ollama (gemma4:31b)',
-          color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
-        };
-      default:
-        return {
-          label: 'Smart Heuristic Engine',
-          color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
-        };
-    }
-  };
-
-  const badge = getProviderBadge();
-
   return (
-    <div className="flex flex-col h-[calc(100dvh-120px)] max-w-4xl mx-auto w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/70 backdrop-blur-xs">
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <div className="p-1.5 rounded-lg bg-orange-500 text-white shadow-xs">
-              <Bot className="w-4 h-4" />
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-zinc-900" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                IRCTC Agent Copilot
-              </span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${badge.color}`}
-              >
-                {badge.label}
-              </span>
-            </div>
-          </div>
-        </div>
+    <div className="flex h-[calc(100vh-4.5rem)] w-full overflow-hidden rounded-2xl sm:rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950 shadow-2xl backdrop-blur-md">
+      {/* Mobile Sidebar Backdrop */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 sm:hidden backdrop-blur-2xs transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
-        <div className="flex items-center gap-1.5">
+      {/* History Sidebar */}
+      <aside
+        className={`fixed sm:static inset-y-0 left-0 z-40 w-72 sm:w-64 md:w-72 flex flex-col bg-zinc-50 dark:bg-zinc-900/90 border-r border-zinc-200 dark:border-zinc-800 transition-transform duration-200 ease-in-out shrink-0 ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'
+        }`}
+      >
+        {/* Sidebar Header */}
+        <div className="p-3.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 transition-colors"
-            title="Configure LLM Provider & BYOK API Keys"
+            onClick={handleCreateNewSession}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl bg-orange-600 hover:bg-orange-700 text-white shadow-xs transition-colors cursor-pointer"
           >
-            <Settings className="w-3.5 h-3.5 text-zinc-400" />
-            <span className="hidden sm:inline">Settings</span>
+            <Plus className="w-4 h-4" />
+            <span>New Travel Chat</span>
           </button>
           <button
             type="button"
-            onClick={handleClearHistory}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            title="Clear Chat History"
+            onClick={() => setIsSidebarOpen(false)}
+            className="sm:hidden p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
           >
-            <Trash2 className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
-      </div>
 
-      {/* Messages Thread */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-        {messages.map((msg) => {
-          const isUser = msg.role === 'user';
-          const hasSteps = msg.steps && msg.steps.length > 0;
-          const isExpanded = !!expandedStepsMap[msg.id];
-          const hasRoutes = msg.routes && msg.routes.length > 0;
+        {/* Sessions List */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700">
+          <div className="px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">
+            Recent Conversations
+          </div>
 
-          return (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
-            >
-              {/* Avatar */}
+          {sessions.map((sess) => {
+            const isCurrent = sess.id === activeSessionId;
+            return (
               <div
-                className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold ${
-                  isUser
-                    ? 'bg-zinc-800 text-white dark:bg-zinc-700'
-                    : 'bg-orange-600 text-white shadow-xs'
+                key={sess.id}
+                onClick={() => {
+                  setActiveSessionId(sess.id);
+                  setIsSidebarOpen(false);
+                }}
+                className={`group flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                  isCurrent
+                    ? 'bg-white dark:bg-zinc-800 text-orange-600 dark:text-orange-400 shadow-2xs font-semibold border border-zinc-200/80 dark:border-zinc-700'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/50'
                 }`}
               >
-                {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                <div className="flex items-center gap-2 min-w-0">
+                  <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isCurrent ? 'text-orange-500' : 'text-zinc-400'}`} />
+                  <span className="truncate">{sess.title}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteSession(sess.id, e)}
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-opacity"
+                  title="Delete Chat"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
+            );
+          })}
+        </div>
 
-              {/* Message Content Container */}
-              <div className={`space-y-2.5 max-w-[85%] sm:max-w-[78%] ${isUser ? 'items-end' : 'items-start'}`}>
-                {/* User Message Bubble */}
-                {isUser ? (
-                  <div className="px-4 py-2.5 rounded-2xl rounded-tr-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs sm:text-sm font-medium shadow-xs">
-                    {msg.content}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Tool / Reasoning Steps Accordion */}
-                    {hasSteps && (
-                      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-zinc-800/40 overflow-hidden text-xs">
-                        <button
-                          type="button"
-                          onClick={() => toggleSteps(msg.id)}
-                          className="w-full flex items-center justify-between px-3 py-1.5 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/60 transition-colors"
-                        >
-                          <span className="flex items-center gap-1.5 font-medium text-[11px]">
-                            <Sparkles className="w-3.5 h-3.5 text-orange-500" />
-                            {msg.status === 'streaming'
-                              ? 'Engine working on railway search...'
-                              : `Engine execution (${msg.steps?.length} steps)`}
-                          </span>
-                          {isExpanded ? (
-                            <ChevronUp className="w-3.5 h-3.5" />
-                          ) : (
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        {isExpanded && (
-                          <div className="px-3 py-2 space-y-1.5 border-t border-zinc-200 dark:border-zinc-800 bg-white/40 dark:bg-zinc-900/40">
-                            {msg.steps?.map((step, si) => (
-                              <div
-                                key={si}
-                                className="flex items-center gap-2 text-[11px] text-zinc-600 dark:text-zinc-300"
-                              >
-                                {step.type === 'error' ? (
-                                  <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                                ) : (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                )}
-                                <span className="font-mono text-zinc-400">
-                                  {step.toolName ? `[${step.toolName}]` : '•'}
-                                </span>
-                                <span>{step.label}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+        {/* Sidebar Footer */}
+        <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Engine Ready</span>
+          </span>
+          <span className="font-mono text-[10px]">
+            {sessions.length} {sessions.length === 1 ? 'thread' : 'threads'}
+          </span>
+        </div>
+      </aside>
 
-                    {/* Agent Text Bubble */}
-                    {msg.content && (
-                      <div className="px-4 py-3 rounded-2xl rounded-tl-xs bg-zinc-100/80 dark:bg-zinc-800/60 border border-zinc-200/60 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xs">
-                        <MarkdownRenderer content={msg.content} />
-                      </div>
-                    )}
-
-                    {/* Streaming Cursor */}
-                    {msg.status === 'streaming' && !msg.content && (
-                      <div className="flex items-center gap-2 text-xs text-zinc-400 p-2">
-                        <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                        <span>Searching Indian Railways live seat availability...</span>
-                      </div>
-                    )}
-
-                    {/* Embedded Itinerary Cards */}
-                    {hasRoutes && (
-                      <div className="space-y-3 pt-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                            <Train className="w-3.5 h-3.5 text-orange-500" />
-                            Found Train Itineraries ({msg.routes?.length})
-                          </span>
-                          {onSwitchToOptimizer && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const first = msg.routes?.[0];
-                                onSwitchToOptimizer(first?.origin, first?.destination);
-                              }}
-                              className="text-[11px] text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1 font-medium"
-                            >
-                              Open in Optimizer <ArrowRight className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="space-y-3">
-                          {msg.routes?.slice(0, 5).map((route) => (
-                            <div
-                              key={route.id}
-                              className="transform transition-all hover:translate-y-[-1px]"
-                            >
-                              <ItineraryCard
-                                itinerary={route}
-                                fromName={route.origin}
-                                toName={route.destination}
-                                onOpenSchedule={onOpenSchedule}
-                                onOpenCoachLayout={onOpenCoachLayout}
-                                onOpenFareBreakdown={onOpenFareBreakdown}
-                                onOpenWatchdog={onOpenWatchdog}
-                                onOpenExportShare={onOpenExportShare}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Quick Suggestion Chips */}
-                    {msg.suggestions && msg.suggestions.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {msg.suggestions.map((sug, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => sendMessage(sug)}
-                            className="px-3 py-1 text-xs rounded-full bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 hover:border-orange-500 hover:text-orange-600 dark:hover:text-orange-400 transition-all text-left shadow-2xs cursor-pointer"
-                          >
-                            💬 {sug}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input Area */}
-      <div className="p-3 sm:p-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            sendMessage(inputPrompt);
-          }}
-          className="relative flex items-end gap-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-2xl p-2 shadow-xs focus-within:ring-2 focus-within:ring-orange-500/50 focus-within:border-orange-500"
-        >
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={inputPrompt}
-            onChange={(e) => setInputPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask anything (e.g. 'Trains from Jhansi to Bangalore on 28 Dec under 1500')..."
-            className="flex-1 max-h-32 p-1.5 text-xs sm:text-sm bg-transparent resize-none text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-hidden"
-          />
-
-          {isStreaming ? (
+      {/* Main Full-Screen Chat View */}
+      <section className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-950 overflow-hidden relative">
+        {/* Top Chat Bar */}
+        <header className="flex items-center justify-between px-3.5 sm:px-5 py-3 border-b border-zinc-200 dark:border-zinc-800/80 shrink-0 bg-white/70 dark:bg-zinc-950/70 backdrop-blur-md z-10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {/* Sidebar Toggle Button */}
             <button
               type="button"
-              onClick={handleStopStreaming}
-              aria-label="Stop generation"
-              className="p-2 rounded-xl bg-zinc-800 dark:bg-zinc-700 text-white hover:bg-zinc-700 transition-colors shrink-0"
-              title="Stop response"
+              onClick={() => setIsSidebarOpen(true)}
+              className="sm:hidden p-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              title="Open Chat History"
             >
-              <Square className="w-4 h-4 fill-current" />
+              <Menu className="w-4 h-4" />
             </button>
-          ) : (
+
+            <div className="w-7 h-7 rounded-xl bg-orange-600 flex items-center justify-center text-white shadow-xs shrink-0">
+              <Bot className="w-4 h-4" />
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs sm:text-sm font-bold text-zinc-950 dark:text-zinc-100 truncate">
+                  {activeSession?.title || 'Travel Copilot'}
+                </h2>
+                <span className="hidden md:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live IRCTC Intelligence
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate">
+                Direct seats • Same-train split berths • Tatkal quotas • Live charting
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex items-center gap-1.5">
+            {onSwitchToOptimizer && (
+              <button
+                type="button"
+                onClick={() => onSwitchToOptimizer()}
+                className="hidden md:flex items-center gap-1 px-2 py-1 text-xs font-mono font-medium rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                title="Switch to Direct Optimizer matrix"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>Optimizer</span>
+              </button>
+            )}
             <button
-              type="submit"
-              disabled={!inputPrompt.trim()}
-              aria-label="Send message"
-              className="p-2 rounded-xl bg-orange-600 text-white hover:bg-orange-500 disabled:opacity-40 disabled:hover:bg-orange-600 transition-colors shrink-0 cursor-pointer"
-              title="Send (Enter)"
+              type="button"
+              onClick={handleCreateNewSession}
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="Start New Chat Session"
             >
-              <Send className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5 text-orange-500" />
+              <span>New Chat</span>
             </button>
-          )}
-        </form>
+            <button
+              type="button"
+              onClick={handleClearCurrentChat}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="Clear Current Chat"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </header>
 
-        <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-zinc-400">
-          <span>Press Enter to send, Shift+Enter for new line</span>
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-          >
-            Model: <span className="font-medium text-orange-500">{config.provider.toUpperCase()}</span>
-          </button>
+        {/* Messages Thread Container */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700">
+          {messages.map((msg) => {
+            const isUser = msg.role === 'user';
+            const hasSteps = msg.steps && msg.steps.length > 0;
+            const hasRoutes = msg.routes && msg.routes.length > 0;
+
+            return (
+              <div
+                key={msg.id}
+                className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+              >
+                {/* Avatar */}
+                <div
+                  className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold ${
+                    isUser
+                      ? 'bg-zinc-800 text-white dark:bg-zinc-700'
+                      : 'bg-orange-600 text-white shadow-xs'
+                  }`}
+                >
+                  {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                </div>
+
+                {/* Message Bubble Container */}
+                <div
+                  className={`space-y-3 max-w-[92%] sm:max-w-[85%] md:max-w-[78%] ${
+                    isUser ? 'items-end' : 'items-start'
+                  }`}
+                >
+                  {/* User Message */}
+                  {isUser ? (
+                    <div className="px-4 py-2.5 rounded-2xl rounded-tr-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs sm:text-sm font-medium shadow-xs leading-relaxed">
+                      {msg.content}
+                    </div>
+                  ) : (
+                    <div className="space-y-3 w-full">
+                      {/* Live Tool Action Row */}
+                      {hasSteps && (
+                        <LiveActionRow
+                          steps={msg.steps || []}
+                          isStreaming={msg.status === 'streaming'}
+                        />
+                      )}
+
+                      {/* Main Assistant Text */}
+                      {msg.content && (
+                        <div className="px-4 py-3 rounded-2xl rounded-tl-xs bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800/80 text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 shadow-2xs">
+                          <MarkdownRenderer content={msg.content} />
+                        </div>
+                      )}
+
+                      {/* Interactive Route Cards */}
+                      {hasRoutes && (
+                        <div className="space-y-3 pt-1">
+                          <div className="flex items-center justify-between text-xs font-mono text-zinc-500">
+                            <span className="font-semibold text-zinc-700 dark:text-zinc-300">
+                              Top Recommended Itineraries ({msg.routes?.length})
+                            </span>
+                            <span>Ranked by seat probability & fare</span>
+                          </div>
+                          {msg.routes?.map((route) => (
+                            <ItineraryCard
+                              key={route.id}
+                              itinerary={route}
+                              onOpenSchedule={(tNo, tName, b, a) =>
+                                onOpenSchedule?.(tNo, tName, b, a)
+                              }
+                              onOpenCoachLayout={(tNo, tName) =>
+                                onOpenCoachLayout?.(tNo, tName)
+                              }
+                              onOpenFareBreakdown={(f, tc, tNo, tName) =>
+                                onOpenFareBreakdown?.(f, tc, tNo, tName)
+                              }
+                              onOpenWatchdog={(tNo, tName, fStn, tStn, tc) =>
+                                onOpenWatchdog?.(tNo, tName, fStn, tStn, tc)
+                              }
+                              onOpenExportShare={(it) => onOpenExportShare?.(it)}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Suggestion Chips */}
+                      {msg.suggestions && msg.suggestions.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {msg.suggestions.map((sug, sIdx) => (
+                            <button
+                              key={`sug-${sIdx}`}
+                              type="button"
+                              onClick={() => sendMessage(sug)}
+                              disabled={isStreaming}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-100 hover:bg-orange-50 dark:bg-zinc-800/80 dark:hover:bg-orange-950/30 text-zinc-700 hover:text-orange-600 dark:text-zinc-300 dark:hover:text-orange-400 border border-zinc-200 dark:border-zinc-700/60 hover:border-orange-300 dark:hover:border-orange-500/40 transition-all cursor-pointer shadow-2xs"
+                            >
+                              <span>{sug}</span>
+                              <ArrowRight className="w-3 h-3 opacity-60" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
         </div>
-      </div>
 
-      {/* Settings Modal */}
-      <AgentSettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        config={config}
-        onSaveConfig={(newCfg) => setConfig(newCfg)}
-      />
+        {/* Input Bar & Footer */}
+        <div className="p-3 sm:p-4 border-t border-zinc-200 dark:border-zinc-800/80 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md shrink-0">
+          <div className="max-w-4xl mx-auto space-y-2">
+            <div className="relative flex items-end gap-2 p-1.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300/80 dark:border-zinc-800 shadow-inner-xs focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 transition-all">
+              <textarea
+                ref={textareaRef}
+                value={inputPrompt}
+                onChange={(e) => setInputPrompt(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask anything: 'Trains from Jhansi to Bangalore on 28 Dec under 1500', or Tatkal rules..."
+                rows={1}
+                disabled={isStreaming}
+                className="flex-1 max-h-36 resize-none bg-transparent px-3 py-2 text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-hidden leading-relaxed"
+              />
+
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={handleStopStreaming}
+                  className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white shrink-0 transition-colors cursor-pointer"
+                  title="Stop generating"
+                >
+                  <Square className="w-4 h-4 fill-white" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => sendMessage(inputPrompt)}
+                  disabled={!inputPrompt.trim()}
+                  className="p-2 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed text-white shrink-0 shadow-xs transition-colors cursor-pointer"
+                  title="Send message"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-zinc-400 px-1 font-mono">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-orange-500" />
+                <span>IRCTC Agent with Live Web Intel & Route Discovery</span>
+              </span>
+              <span className="hidden sm:inline">Press Enter ↵ to send</span>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };
