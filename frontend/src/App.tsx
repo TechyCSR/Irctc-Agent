@@ -568,17 +568,30 @@ const MainApp: React.FC = () => {
                   </button>
                 )}
 
-                {/* Menu Bar with Theme and How It Works */}
+                {/* Quick Switch to AI Copilot when viewing Optimizer */}
+                {activeMode === 'OPTIMIZER' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveMode('AGENT')}
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 border border-orange-500/20 hover:bg-orange-500/20 transition cursor-pointer shadow-2xs"
+                    title="Switch back to AI Copilot"
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    <span>AI Copilot</span>
+                  </button>
+                )}
+
+                {/* Menu Bar with Search Mode, Theme, and How It Works */}
                 <div className="relative" ref={menuRef}>
                   <button
                     type="button"
                     onClick={() => setIsMenuOpen((prev) => !prev)}
-                    title="Menu"
+                    title="Menu & Settings"
                     aria-label="Toggle menu"
                     className="p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-zinc-100 text-zinc-800 dark:text-zinc-200 transition bg-white dark:bg-zinc-900 active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-xs relative z-50"
                   >
                     {isMenuOpen ? <X className="w-4 h-4 text-zinc-700 dark:text-zinc-300" /> : <Menu className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />}
-                    <span className="hidden sm:inline text-xs font-mono font-bold">Menu</span>
+                    <span className="hidden sm:inline text-xs font-mono font-bold">Settings</span>
                   </button>
 
                   {/* Backdrop overlay on mobile */}
@@ -592,7 +605,51 @@ const MainApp: React.FC = () => {
 
                   {/* Dropdown Menu */}
                   {isMenuOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-60 sm:w-56 max-w-[calc(100vw-2rem)] glass-card bg-white/98 dark:bg-zinc-900/98 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl p-1.5 shadow-2xl z-50 animate-slide-up divide-y divide-zinc-100 dark:divide-zinc-800 ring-1 ring-black/5 dark:ring-white/10">
+                    <div className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] glass-card bg-white/98 dark:bg-zinc-900/98 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl p-1.5 shadow-2xl z-50 animate-slide-up divide-y divide-zinc-100 dark:divide-zinc-800 ring-1 ring-black/5 dark:ring-white/10">
+                      {/* Search Experience Mode Switcher */}
+                      <div className="py-1 space-y-1">
+                        <div className="px-3 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">
+                          Search Mode
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMode('AGENT');
+                            setIsMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-mono font-medium transition cursor-pointer ${
+                            activeMode === 'AGENT'
+                              ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold border border-orange-500/20'
+                              : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Bot className="w-4 h-4 text-orange-500" />
+                            <span>AI Copilot (Default)</span>
+                          </span>
+                          {activeMode === 'AGENT' && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMode('OPTIMIZER');
+                            setIsMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-mono font-medium transition cursor-pointer ${
+                            activeMode === 'OPTIMIZER'
+                              ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold border border-orange-500/20'
+                              : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-amber-500" />
+                            <span>Direct Optimizer</span>
+                          </span>
+                          {activeMode === 'OPTIMIZER' && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
+                        </button>
+                      </div>
+
                       <div className="py-1 space-y-0.5">
                         {/* Theme Toggle Inside Menu Bar */}
                         <button
@@ -652,46 +709,8 @@ const MainApp: React.FC = () => {
         </header>
 
         {/* Main Body */}
-        <main className="flex-1 max-w-6xl w-full mx-auto px-3.5 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
-          {/* Top Segmented Mode Switcher */}
-          <div className="flex items-center justify-between gap-3 pb-1">
-            <div className="flex items-center p-1 rounded-xl bg-zinc-200/60 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/60 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setActiveMode('AGENT')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
-                  activeMode === 'AGENT'
-                    ? 'bg-white dark:bg-zinc-900 text-orange-600 dark:text-orange-400 shadow-xs'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-                }`}
-              >
-                <Bot className="w-3.5 h-3.5" />
-                <span>AI Copilot</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold border border-orange-500/20">
-                  AGENT
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveMode('OPTIMIZER')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
-                  activeMode === 'OPTIMIZER'
-                    ? 'bg-white dark:bg-zinc-900 text-orange-600 dark:text-orange-400 shadow-xs'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-                }`}
-              >
-                <Zap className="w-3.5 h-3.5" />
-                <span>Direct Optimizer</span>
-              </button>
-            </div>
-
-            <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>{activeMode === 'AGENT' ? 'Conversational IRCTC Search' : 'Multi-Station Classical Matrix'}</span>
-            </div>
-          </div>
-
-          {activeMode === 'AGENT' ? (
+        {activeMode === 'AGENT' ? (
+          <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-4 py-2 sm:py-3 flex flex-col min-h-0">
             <AgentChatView
               onOpenSchedule={(tNo, tName, b, a) =>
                 setActiveScheduleTrain({ no: tNo, name: tName, boarding: b, alighting: a })
@@ -716,9 +735,10 @@ const MainApp: React.FC = () => {
                 }
               }}
             />
-          ) : (
-            <>
-              {/* Search Control Card with Glass Panel (Enlarged & Primary Focus) */}
+          </main>
+        ) : (
+          <main className="flex-1 max-w-6xl w-full mx-auto px-3.5 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
+            {/* Search Control Card with Glass Panel (Enlarged & Primary Focus) */}
               <div className="glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200/90 dark:border-zinc-800/90 rounded-2xl sm:rounded-3xl p-4 sm:p-7 lg:p-8 shadow-xl dark:shadow-2xl no-print transition-all ring-1 ring-zinc-950/5 dark:ring-white/10">
             {/* Focused Search Card Header */}
             <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-zinc-100 dark:border-zinc-800/80">
@@ -1276,9 +1296,8 @@ const MainApp: React.FC = () => {
               <InteractiveTrainCanvas isDark={isDark} />
             </div>
           )}
-            </>
-          )}
         </main>
+      )}
 
         {/* Modal: Train Schedule & Platform Stops */}
         {activeScheduleTrain && (
