@@ -21,6 +21,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Loader2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import type { ChatMessage, ChatSession, AgentStep, RouteItinerary } from '../../types';
 import { streamAgentChat } from '../../services/api';
@@ -89,6 +91,36 @@ function createNewSessionObject(title = 'New Travel Query'): ChatSession {
   };
 }
 
+function deduplicateClientRoutes(routes: RouteItinerary[]): RouteItinerary[] {
+  const seen = new Set<string>();
+  const deduped: RouteItinerary[] = [];
+
+  const confidenceRank: Record<string, number> = {
+    CONFIRMED: 3,
+    RAC: 2,
+    WAITLIST: 1,
+    REGRET: 0,
+  };
+
+  const sorted = [...routes].sort((a, b) => {
+    const cA = confidenceRank[a.booking_confidence || ''] || 0;
+    const cB = confidenceRank[b.booking_confidence || ''] || 0;
+    if (cB !== cA) return cB - cA;
+    return (a.best_fare || 0) - (b.best_fare || 0);
+  });
+
+  for (const r of sorted) {
+    const key =
+      r.legs?.map((l) => `${l.train_no}-${l.from}-${l.to}-${l.departure}`).join('|') ||
+      r.id;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(r);
+    }
+  }
+  return deduped;
+}
+
 export const AgentChatView: React.FC<AgentChatViewProps> = ({
   onOpenSchedule,
   onOpenCoachLayout,
@@ -138,6 +170,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
   // ChatGPT-style actions feedback
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, 'up' | 'down'>>({});
+  const [expandedRoutes, setExpandedRoutes] = useState<Record<string, boolean>>({});
 
   // Real-time live Indian Standard Time clock
   const [currentTimeIST, setCurrentTimeIST] = useState<string>('');
@@ -477,7 +510,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
         className={`fixed sm:static inset-y-0 left-0 z-40 flex flex-col bg-zinc-50 dark:bg-zinc-900/90 border-r border-zinc-200 dark:border-zinc-800 transition-all duration-300 ease-in-out shrink-0 overflow-hidden ${
           isSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full sm:translate-x-0'
         } ${
-          isSidebarCollapsed ? 'sm:w-0 sm:border-r-0 sm:opacity-0' : 'sm:w-64 md:w-72 sm:opacity-100'
+          isSidebarCollapsed ? 'sm:w-0 sm:border-r-0 sm:p-0 sm:opacity-0 sm:pointer-events-none' : 'sm:w-64 md:w-72 sm:opacity-100'
         }`}
       >
         {/* Sidebar Header */}
@@ -651,7 +684,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
         </header>
 
         {/* Messages Thread Canvas */}
-        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 space-y-6 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800">
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 py-5 sm:px-6 sm:py-6 space-y-6 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800">
           <div className="max-w-3xl lg:max-w-4xl mx-auto space-y-6 w-full">
             {messages.map((msg) => {
               const isUser = msg.role === 'user';
@@ -801,36 +834,83 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
                           </div>
                         )}
 
-                        {/* Interactive Route Cards */}
-                        {hasRoutes && (
-                          <div className="space-y-3 pt-1">
-                            <div className="flex items-center justify-between text-xs font-mono text-zinc-500">
-                              <span className="font-semibold text-zinc-700 dark:text-zinc-300">
-                                Top Recommended Itineraries ({msg.routes?.length})
-                              </span>
-                              <span>Ranked by seat probability & fare</span>
+                        {/* Interactive Route Cards (Deduplicated, Confirmed-First, Paginated with Show More) */}
+                        {hasRoutes && (() => {
+                          const dedupedRoutes = deduplicateClientRoutes(msg.routes || []);
+                          const isExpanded = Boolean(expandedRoutes[msg.id]);
+                          const visibleRoutes = isExpanded ? dedupedRoutes : dedupedRoutes.slice(0, 3);
+                          const remainingCount = dedupedRoutes.length - 3;
+                          const confirmedCount = dedupedRoutes.filter(
+                            (r) => r.booking_confidence === 'CONFIRMED'
+                          ).length;
+
+                          return (
+                            <div className="space-y-3 pt-2">
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-zinc-500 pb-1 border-b border-zinc-200/60 dark:border-zinc-800/60">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                                    Top Recommended Itineraries ({dedupedRoutes.length})
+                                  </span>
+                                  {confirmedCount > 0 && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                      {confirmedCount} Confirmed
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[11px] text-zinc-400">
+                                  Showing {visibleRoutes.length} of {dedupedRoutes.length} options
+                                </span>
+                              </div>
+
+                              <div className="space-y-3">
+                                {visibleRoutes.map((route) => (
+                                  <ItineraryCard
+                                    key={route.id}
+                                    itinerary={route}
+                                    onOpenSchedule={(tNo, tName, b, a) =>
+                                      onOpenSchedule?.(tNo, tName, b, a)
+                                    }
+                                    onOpenCoachLayout={(tNo, tName) =>
+                                      onOpenCoachLayout?.(tNo, tName)
+                                    }
+                                    onOpenFareBreakdown={(f, tc, tNo, tName) =>
+                                      onOpenFareBreakdown?.(f, tc, tNo, tName)
+                                    }
+                                    onOpenWatchdog={(tNo, tName, fStn, tStn, tc) =>
+                                      onOpenWatchdog?.(tNo, tName, fStn, tStn, tc)
+                                    }
+                                    onOpenExportShare={(it) => onOpenExportShare?.(it)}
+                                  />
+                                ))}
+                              </div>
+
+                              {remainingCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedRoutes((prev) => ({
+                                      ...prev,
+                                      [msg.id]: !prev[msg.id],
+                                    }))
+                                  }
+                                  className="w-full py-2.5 px-4 rounded-xl text-xs font-mono font-semibold border border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10 text-orange-600 dark:text-orange-400 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs group"
+                                >
+                                  {isExpanded ? (
+                                    <>
+                                      <span>Show Less (Show Top 3 Only)</span>
+                                      <ChevronUp className="w-3.5 h-3.5 group-hover:-translate-y-0.5 transition-transform" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>Show More ({remainingCount} more train options)</span>
+                                      <ChevronDown className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition-transform" />
+                                    </>
+                                  )}
+                                </button>
+                              )}
                             </div>
-                            {msg.routes?.map((route) => (
-                              <ItineraryCard
-                                key={route.id}
-                                itinerary={route}
-                                onOpenSchedule={(tNo, tName, b, a) =>
-                                  onOpenSchedule?.(tNo, tName, b, a)
-                                }
-                                onOpenCoachLayout={(tNo, tName) =>
-                                  onOpenCoachLayout?.(tNo, tName)
-                                }
-                                onOpenFareBreakdown={(f, tc, tNo, tName) =>
-                                  onOpenFareBreakdown?.(f, tc, tNo, tName)
-                                }
-                                onOpenWatchdog={(tNo, tName, fStn, tStn, tc) =>
-                                  onOpenWatchdog?.(tNo, tName, fStn, tStn, tc)
-                                }
-                                onOpenExportShare={(it) => onOpenExportShare?.(it)}
-                              />
-                            ))}
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Suggestion Chips */}
                         {msg.suggestions && msg.suggestions.length > 0 && (

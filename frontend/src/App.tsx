@@ -514,7 +514,7 @@ const MainApp: React.FC = () => {
     <>
       {isBooting && <BootLoader onComplete={handleBootComplete} />}
 
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans selection:bg-zinc-950 selection:text-white dark:selection:bg-white dark:selection:text-zinc-950">
+      <div className={`${activeMode === 'AGENT' ? 'h-screen h-[100dvh] overflow-hidden' : 'min-h-screen'} bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans selection:bg-zinc-950 selection:text-white dark:selection:bg-white dark:selection:text-zinc-950`}>
         {/* Top Ambient Visualizer Header */}
         <header className="relative border-b border-zinc-200/80 dark:border-zinc-800/80 glass-card bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md sticky top-0 z-40 no-print transition-all">
           {/* Three.js Ambient Particle Grid Canvas (isolated overflow) */}
@@ -705,7 +705,7 @@ const MainApp: React.FC = () => {
 
         {/* Main Body */}
         {activeMode === 'AGENT' ? (
-          <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-4 py-2 sm:py-3 flex flex-col min-h-0">
+          <main className="flex-1 w-full mx-auto flex flex-col min-h-0 overflow-hidden">
             <AgentChatView
               onOpenSchedule={(tNo, tName, b, a) =>
                 setActiveScheduleTrain({ no: tNo, name: tName, boarding: b, alighting: a })
@@ -1431,38 +1431,40 @@ const MainApp: React.FC = () => {
           </div>
         )}
 
-        {/* Footer */}
-        <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-6 mt-12 text-center text-xs font-mono text-zinc-500 dark:text-zinc-400 no-print">
-          <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-zinc-900 dark:text-white">IrctcAgent</span>
-              <span>&bull;</span>
-              <span>v2.0</span>
-              <span>&bull;</span>
-              <a
-                href="https://techycsr.dev"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-zinc-950 dark:hover:text-white transition font-medium text-zinc-700 dark:text-zinc-300 underline underline-offset-2 flex items-center gap-1"
-              >
-                <span>Developed by @TechyCSR</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
+        {/* Footer (Rendered only on Direct Optimizer mode, hidden in Agent Chat full screen) */}
+        {activeMode === 'OPTIMIZER' && (
+          <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-6 mt-12 text-center text-xs font-mono text-zinc-500 dark:text-zinc-400 no-print">
+            <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-zinc-900 dark:text-white">IrctcAgent</span>
+                <span>&bull;</span>
+                <span>v2.0</span>
+                <span>&bull;</span>
+                <a
+                  href="https://techycsr.dev"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-zinc-950 dark:hover:text-white transition font-medium text-zinc-700 dark:text-zinc-300 underline underline-offset-2 flex items-center gap-1"
+                >
+                  <span>Developed by @TechyCSR</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
 
-            <div className="flex items-center gap-4 text-zinc-600 dark:text-zinc-400">
-              <a
-                href="https://www.irctc.co.in"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-zinc-950 dark:hover:text-white transition flex items-center gap-1"
-              >
-                <span>Official IRCTC Portal</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
+              <div className="flex items-center gap-4 text-zinc-600 dark:text-zinc-400">
+                <a
+                  href="https://www.irctc.co.in"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-zinc-950 dark:hover:text-white transition flex items-center gap-1"
+                >
+                  <span>Official IRCTC Portal</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
             </div>
-          </div>
-        </footer>
+          </footer>
+        )}
       </div>
     </>
   );
