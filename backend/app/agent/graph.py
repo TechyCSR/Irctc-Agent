@@ -11,8 +11,23 @@ import os
 from typing import Annotated, Any, AsyncGenerator, Dict, List, Optional, TypedDict
 
 import operator
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from langgraph.graph import END, START, StateGraph
+try:
+    from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+    from langgraph.graph import END, START, StateGraph
+except ImportError:
+    class BaseMessage:
+        def __init__(self, content="", **kwargs):
+            self.content = content
+    class AIMessage(BaseMessage): pass
+    class HumanMessage(BaseMessage): pass
+    class SystemMessage(BaseMessage): pass
+    class ToolMessage(BaseMessage):
+        def __init__(self, content="", tool_call_id="", **kwargs):
+            super().__init__(content=content)
+            self.tool_call_id = tool_call_id
+    END = "END"
+    START = "START"
+    StateGraph = None
 
 try:
     from app.agent.tools import ALL_AGENT_TOOLS, TOOLS_BY_NAME
@@ -23,25 +38,16 @@ except ImportError:
 
 logger = logging.getLogger("IrctcAgent.Graph")
 
-SYSTEM_PROMPT = """You are Antigravity IRCTC Copilot, an elite AI assistant specializing in Indian Railways (IRCTC).
-Your job is to help travelers find confirmed tickets, uncover same-train split seats, check tatkal quotas, track live train schedules, and optimize travel fares.
+SYSTEM_PROMPT = """You are Antigravity IRCTC Copilot, an elite, highly knowledgeable, and charismatic AI travel assistant specializing in Indian Railways (IRCTC).
+You possess the natural conversational brilliance, multi-turn memory, and empathy of ChatGPT/Claude, paired with real-time algorithmic tools for Indian Railways.
 
-Capabilities & Tools:
-1. `search_trains`: Search direct trains, transfer corridors, same-train split seats, and origin hacks.
-2. `resolve_station`: Search station codes (e.g. Jhansi -> VGLJ, Bangalore -> SBC/YPR/SMVB, Delhi -> NDLS).
-3. `get_train_schedule`: Look up full timetable, halts, arrival/departure times, and platform numbers.
-4. `get_multi_date_availability`: Compare seat availability across 5 consecutive travel dates.
-5. `get_fare_breakdown`: Calculate IRCTC fare breakup (base fare, superfast, GST).
-6. `get_charting_status`: Check 1st and 2nd chart preparation timeline and vacancy booking window.
-7. `web_search_rail_intel`: Search live web railway news, official IRCTC circulars, Tatkal rules, cancellation fee slabs, and travel guidelines.
-
-Guidelines:
-- If origin or destination station is unclear or given as a general city name, you may use `resolve_station` or directly pass the city name to `search_trains`.
-- When users ask to find trains, call `search_trains`.
-- If budget or class is mentioned (e.g. 'under 1500', 'sleeper', '3A'), pass them as parameters.
-- Provide friendly, concise, and structured answers using markdown bullet points and bold highlights.
-- Highlight confirmed options, lowest fares, and any same-train split lifehacks found.
-- Be generous and proactive in suggesting follow-up tips or alternate dates if seats are waitlisted.
+Personality & Dialogue Guidelines:
+- Speak naturally with cultural warmth, humor, and intelligence like an experienced veteran Indian train traveler.
+- For chitchat, greetings, jokes, philosophical questions, or emotional reactions (e.g. 'lol', 'tell me a joke', 'who are you', 'how are you', 'aanother one'), reply with genuine humor and wit. DO NOT call railway tools for casual banter.
+- Track conversation history attentively: if the user asks a follow-up (e.g. 'another one', 'what about 3A?', 'how about tomorrow?', 'is it cheaper?'), maintain the active journey context seamlessly.
+- ONLY invoke railway tools when actual travel data is needed (e.g. searching trains, schedules, 5-day availability, charting, or official rules).
+- Resolve station names intelligently: handle typos and common spellings (e.g. 'jodphur' -> JODHPUR / JU, 'banglore' -> BANGALORE / SBC, 'bhoap' -> BHOPAL / BPL).
+- Always highlight confirmed options, lowest fares, and any same-train split lifehacks.
 """
 
 
@@ -72,7 +78,44 @@ def get_chat_model(user_config: Dict[str, Any]):
             api_key = os.getenv("OPENAI_API_KEY", "")
         elif provider == "ollama":
             api_key = os.getenv("OLLAMA_API_KEY", "")
+        elif provider == "groq":
+            api_key = os.getenv("GROQ_API_KEY", "")
+        elif provider == "openrouter":
+            api_key = os.getenv("OPENROUTER_API_KEY", "")
 
+    # 1. Groq Cloud (Ultra-fast inference)
+    groq_key = api_key if provider == "groq" else os.getenv("GROQ_API_KEY", "")
+    if provider == "groq" or (provider in ["auto", "default"] and groq_key):
+        if groq_key:
+            try:
+                from langchain_openai import ChatOpenAI
+                return ChatOpenAI(
+                    base_url="https://api.groq.com/openai/v1",
+                    api_key=groq_key,
+                    model=model_name or "llama-3.3-70b-versatile",
+                    temperature=0.3,
+                    timeout=15.0
+                )
+            except Exception as e:
+                logger.warning(f"Failed to initialize Groq model: {e}")
+
+    # 2. OpenRouter (Multi-model free/paid gateway)
+    openrouter_key = api_key if provider == "openrouter" else os.getenv("OPENROUTER_API_KEY", "")
+    if provider == "openrouter" or (provider in ["auto", "default"] and openrouter_key):
+        if openrouter_key:
+            try:
+                from langchain_openai import ChatOpenAI
+                return ChatOpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=openrouter_key,
+                    model=model_name or "meta-llama/llama-3.1-8b-instruct:free",
+                    temperature=0.3,
+                    timeout=20.0
+                )
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenRouter model: {e}")
+
+    # 3. Google Gemini
     if provider == "gemini":
         if not api_key:
             logger.info("No Gemini API key provided, using SmartFallbackAgent")
@@ -90,23 +133,29 @@ def get_chat_model(user_config: Dict[str, Any]):
             logger.warning(f"Failed to initialize Gemini model: {e}")
             return None
 
-    elif provider == "openai":
-        if not api_key:
+    # 4. Standard OpenAI / Custom OpenAI base URL
+    elif provider in ["openai", "custom"]:
+        openai_base = endpoint or os.getenv("OPENAI_BASE_URL", "")
+        if not api_key and not openai_base:
             logger.info("No OpenAI API key provided, using SmartFallbackAgent")
             return None
         try:
             from langchain_openai import ChatOpenAI
             m = model_name or "gpt-4o-mini"
-            return ChatOpenAI(
-                model=m,
-                api_key=api_key,
-                temperature=0.2,
-                timeout=30
-            )
+            kwargs = {
+                "model": m,
+                "api_key": api_key or os.getenv("OPENAI_API_KEY", "none"),
+                "temperature": 0.2,
+                "timeout": 30
+            }
+            if openai_base:
+                kwargs["base_url"] = openai_base
+            return ChatOpenAI(**kwargs)
         except Exception as e:
             logger.warning(f"Failed to initialize OpenAI model: {e}")
             return None
 
+    # 5. Ollama
     elif provider == "ollama":
         base_url = endpoint or os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_ENDPOINT)
         # Fast-fail if running in cloud container and pointing to local host without daemon
@@ -193,7 +242,7 @@ class IrctcAgentOrchestrator:
 
         # If no external LLM model configured, run SmartFallbackAgent directly
         if model is None:
-            res = await self.fallback.execute_query(latest_user_text)
+            res = await self.fallback.execute_query(latest_user_text, messages_history=messages_history)
 
             # Only yield steps if actual tools were invoked
             for step in res.get("steps", []):
@@ -318,7 +367,7 @@ class IrctcAgentOrchestrator:
 
         except Exception as e:
             logger.warning(f"LLM execution failed ({e}), routing smoothly to SmartFallbackAgent")
-            fb_res = await self.fallback.execute_query(latest_user_text)
+            fb_res = await self.fallback.execute_query(latest_user_text, messages_history=messages_history)
             for step in fb_res.get("steps", []):
                 yield {"type": "step", "step": step}
             text = fb_res.get("text", "")
