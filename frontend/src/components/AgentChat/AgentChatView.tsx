@@ -269,7 +269,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
         };
       case 'ollama':
         return {
-          label: config.model ? `Ollama (${config.model})` : 'Ollama Cloud/Local',
+          label: config.model ? `Ollama (${config.model})` : 'Ollama (gemma4:31b)',
           color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
         };
       default:

@@ -17,19 +17,19 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
   onSaveConfig,
 }) => {
   const [providers, setProviders] = useState<AgentProviderOption[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState<LLMProviderId>(config.provider || 'auto');
+  const [selectedProvider, setSelectedProvider] = useState<LLMProviderId>(config.provider || 'ollama');
   const [apiKey, setApiKey] = useState<string>(config.apiKey || '');
-  const [model, setModel] = useState<string>(config.model || '');
-  const [endpoint, setEndpoint] = useState<string>(config.endpoint || '');
+  const [model, setModel] = useState<string>(config.model || 'gemma4:31b');
+  const [endpoint, setEndpoint] = useState<string>(config.endpoint || 'http://localhost:11434/v1');
   const [showKey, setShowKey] = useState<boolean>(false);
   const [isSaved, setIsSaved] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedProvider(config.provider || 'auto');
+      setSelectedProvider(config.provider || 'ollama');
       setApiKey(config.apiKey || '');
-      setModel(config.model || '');
-      setEndpoint(config.endpoint || '');
+      setModel(config.model || 'gemma4:31b');
+      setEndpoint(config.endpoint || 'http://localhost:11434/v1');
       setIsSaved(false);
 
       fetchAgentProviders().then((res) => {
@@ -78,10 +78,10 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
   };
 
   const handleResetToAuto = () => {
-    setSelectedProvider('auto');
+    setSelectedProvider('ollama');
     setApiKey('');
-    setModel('');
-    setEndpoint('');
+    setModel('gemma4:31b');
+    setEndpoint('http://localhost:11434/v1');
   };
 
   return (

@@ -206,14 +206,26 @@ export function getStoredAgentConfig(): AgentConfig {
   try {
     const raw = localStorage.getItem(AGENT_CONFIG_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.provider) {
+        // Automatically default to Ollama (gemma4:31b) if previously auto without custom key
+        if (parsed.provider === 'auto' && !parsed.apiKey) {
+          return {
+            provider: 'ollama',
+            apiKey: '',
+            model: 'gemma4:31b',
+            endpoint: parsed.endpoint || 'http://localhost:11434/v1',
+          };
+        }
+        return parsed;
+      }
     }
   } catch {}
   return {
-    provider: 'auto',
+    provider: 'ollama',
     apiKey: '',
-    model: '',
-    endpoint: '',
+    model: 'gemma4:31b',
+    endpoint: 'http://localhost:11434/v1',
   };
 }
 
