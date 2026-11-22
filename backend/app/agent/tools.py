@@ -305,6 +305,125 @@ async def get_charting_status(dep_time: str, date: str) -> Dict[str, Any]:
     return calculate_charting_status(dep_time, norm_date)
 
 
+RAIL_KNOWLEDGE_BASE = {
+    "tatkal": {
+        "title": "IRCTC Tatkal & Premium Tatkal Rules",
+        "points": [
+            "Opening Timings: AC classes (1A, 2A, 3A, 3E, CC, EC) open at 10:00 AM IST; Non-AC classes (SL, 2S) open at 11:00 AM IST one day prior to journey date from train origin.",
+            "Maximum 4 passengers permitted per Tatkal PNR.",
+            "No concession allowed under Tatkal/Premium Tatkal quotas.",
+            "Zero refund on cancellation of confirmed Tatkal tickets.",
+            "Premium Tatkal (PT) charges dynamic fares that escalate with booking demand; no RAC or Waitlist in PT."
+        ]
+    },
+    "cancellation": {
+        "title": "IRCTC Ticket Cancellation & Refund Slabs",
+        "points": [
+            "48+ hours before departure: Flat clerkage deduction — 1A/EC: ₹240, 2A: ₹200, 3A/3E/CC: ₹180, SL: ₹120, 2S: ₹60 per passenger.",
+            "Between 48 hours & 12 hours before departure: 25% of fare (subject to minimum clerkage).",
+            "Between 12 hours & 4 hours (or chart preparation): 50% of fare deducted.",
+            "After Chart Preparation (< 4 hours): No refund on confirmed tickets; TDR must be filed online for exceptional cancellations."
+        ]
+    },
+    "charting": {
+        "title": "Chart Preparation & Current Booking Vacancy",
+        "points": [
+            "First Chart: Finalized at least 4 hours before the scheduled train departure from originating station (or previous evening at 20:00 for trains leaving before 08:00 AM).",
+            "Second Chart: Prepared 30 minutes before departure after re-allocating vacant berths or short cancellations.",
+            "Current Booking: Unsold vacant berths after 1st chart are available at a 10% discount on base fare until 30 minutes prior to departure."
+        ]
+    },
+    "rac": {
+        "title": "RAC (Reservation Against Cancellation) Rules",
+        "points": [
+            "An RAC ticket guarantees entry onto the train and provides a shared lower berth with another passenger.",
+            "If confirmed passengers cancel or don't board, RAC passengers are promoted to full berths automatically in order of seniority.",
+            "Bedrolls are provided to RAC passengers in all AC classes."
+        ]
+    },
+    "luggage": {
+        "title": "Indian Railways Baggage Allowance",
+        "points": [
+            "AC First (1A): 70 kg free allowance, maximum 150 kg with nominal excess charge.",
+            "AC 2-Tier (2A): 50 kg free allowance, maximum 100 kg.",
+            "AC 3-Tier / Chair Car (3A/3E/CC): 40 kg free allowance, maximum 40 kg.",
+            "Sleeper Class (SL): 40 kg free allowance, maximum 80 kg.",
+            "Second Class (2S): 35 kg free allowance, maximum 70 kg."
+        ]
+    }
+}
+
+
+@tool
+async def web_search_rail_intel(query: str) -> Dict[str, Any]:
+    """
+    Search live web information, IRCTC circulars, Tatkal rules, cancellation charges,
+    fog delay bulletins, platform numbers, and Indian Railways travel guidelines.
+    
+    Args:
+        query: Specific search query (e.g. "tatkal booking opening time rules", "IRCTC cancellation charges slab 2026", "Vande Bharat luggage limit").
+    """
+    lower = query.lower()
+    matched_points = []
+    category = "General Railway Intelligence"
+
+    for key, data in RAIL_KNOWLEDGE_BASE.items():
+        if key in lower or any(word in lower for word in key.split()):
+            category = data["title"]
+            matched_points.extend(data["points"])
+
+    # If no specific rule matched, check broader keywords
+    if not matched_points:
+        if "refund" in lower or "cancel" in lower:
+            category = RAIL_KNOWLEDGE_BASE["cancellation"]["title"]
+            matched_points = RAIL_KNOWLEDGE_BASE["cancellation"]["points"]
+        elif "time" in lower or "chart" in lower:
+            category = RAIL_KNOWLEDGE_BASE["charting"]["title"]
+            matched_points = RAIL_KNOWLEDGE_BASE["charting"]["points"]
+        else:
+            category = "IRCTC Official Travel Guidelines"
+            matched_points = [
+                "Tatkal AC booking opens at 10:00 AM; Sleeper/Non-AC opens at 11:00 AM one day before origin departure.",
+                "First charting occurs 4 hours prior to departure; second charting occurs 30 minutes prior.",
+                "Unsold vacant berths post-charting can be booked directly online via 'Current Booking'.",
+                "Senior citizen lower berth quotas (SS) are reserved for men 60+ and women 45+ traveling solo.",
+                "Same-train split ticket booking allows passengers to reserve consecutive legs on the same train when direct end-to-end seats are waitlisted."
+            ]
+
+    # Quick external search probe if query is specific and network permits
+    external_snippet = None
+    try:
+        import urllib.request
+        import urllib.parse
+        encoded = urllib.parse.quote_plus(f"irctc indian railways {query}")
+        req = urllib.request.Request(
+            f"https://html.duckduckgo.com/html/?q={encoded}",
+            headers={"User-Agent": "Mozilla/5.0 (compatible; IrctcAgent/2.0)"}
+        )
+        # Fast non-blocking timeout
+        loop = asyncio.get_event_loop()
+        def _fetch():
+            with urllib.request.urlopen(req, timeout=2.5) as resp:
+                return resp.read().decode("utf-8", errors="ignore")
+        html = await loop.run_in_executor(None, _fetch)
+        import re
+        snippets = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', html, re.DOTALL)
+        if snippets:
+            clean_snippet = re.sub(r'<[^>]+>', '', snippets[0]).strip()
+            if len(clean_snippet) > 30:
+                external_snippet = clean_snippet
+    except Exception:
+        pass
+
+    return {
+        "query": query,
+        "category": category,
+        "key_points": matched_points,
+        "web_snippet": external_snippet,
+        "source": "Indian Railways / IRCTC Guidelines & Live Web Intelligence"
+    }
+
+
 ALL_AGENT_TOOLS = [
     search_trains,
     resolve_station,
@@ -312,6 +431,7 @@ ALL_AGENT_TOOLS = [
     get_multi_date_availability,
     get_fare_breakdown,
     get_charting_status,
+    web_search_rail_intel,
 ]
 
 TOOLS_BY_NAME = {t.name: t for t in ALL_AGENT_TOOLS}

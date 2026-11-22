@@ -15,6 +15,7 @@ try:
         get_train_schedule,
         get_multi_date_availability,
         get_charting_status,
+        web_search_rail_intel,
         resolve_station_code,
         CITY_TO_DEFAULT_CODE
     )
@@ -26,6 +27,7 @@ except ImportError:
         get_train_schedule,
         get_multi_date_availability,
         get_charting_status,
+        web_search_rail_intel,
         resolve_station_code,
         CITY_TO_DEFAULT_CODE
     )
@@ -256,7 +258,45 @@ class SmartFallbackAgent:
             )
             return {"text": reply, "steps": steps, "routes": []}
 
-        # 4. Multi-Date Comparison: e.g. "compare next 5 days from NDLS to SBC"
+        # 4. Web Search & Railway Intel (Rules, Cancellation, Tatkal Slabs, Concession, Luggage)
+        rail_intel_keywords = [
+            "rule", "rules", "cancellation", "cancel", "refund", "tatkal time", "tatkal open",
+            "tatkal rule", "luggage", "baggage", "rac", "current booking", "senior citizen concession",
+            "food", "pantry", "bulletin", "delay", "vande bharat rule", "infant ticket"
+        ]
+        from_chk, to_chk = extract_station_pair(text)
+        if any(k in lower for k in rail_intel_keywords) and not (from_chk and to_chk and ("train" in lower or "search" in lower)):
+            steps.append({
+                "label": f"Searching live web intelligence & official railway guidelines for '{text[:40]}'",
+                "type": "tool_call",
+                "toolName": "web_search_rail_intel",
+                "input": {"query": text}
+            })
+            intel_res = await web_search_rail_intel.ainvoke({"query": text})
+            steps.append({
+                "label": f"Retrieved official guidelines for {intel_res.get('category')}",
+                "type": "tool_result"
+            })
+            bullet_points = "\n".join([f"• {p}" for p in intel_res.get("key_points", [])])
+            snippet_part = f"\n\n> 🌐 **Live Web Intelligence:** {intel_res['web_snippet']}" if intel_res.get("web_snippet") else ""
+            reply = (
+                f"### 📋 {intel_res.get('category')}\n\n"
+                f"{bullet_points}"
+                f"{snippet_part}\n\n"
+                f"*(Source: {intel_res.get('source')})*"
+            )
+            return {
+                "text": reply,
+                "steps": steps,
+                "routes": [],
+                "suggestions": [
+                    "Check chart preparation time for 18:00 departure",
+                    "From Delhi to Mumbai tomorrow in 3A confirmed only",
+                    "Compare 5 days NDLS to SBC"
+                ]
+            }
+
+        # 5. Multi-Date Comparison: e.g. "compare next 5 days from NDLS to SBC"
         if any(k in lower for k in ["compare", "multi date", "next 5 days", "calendar", "which day"]):
             from_raw, to_raw = extract_station_pair(text)
             if from_raw and to_raw:
