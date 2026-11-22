@@ -8,6 +8,10 @@ import type {
   FareBreakdownItem,
   ChartingStatusResponse,
   WatchdogAlertItem,
+  AgentConfig,
+  AgentProviderOption,
+  ChatMessage,
+  AgentStep,
 } from '../types';
 
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -190,4 +194,135 @@ export function getStreamUrl(fromCode: string, toCode: string, date: string, quo
     quota,
   });
   return `${API_BASE_URL}/api/search/stream?${params.toString()}`;
+}
+
+// ==========================================
+// AGENTIC AI CLIENT HELPERS
+// ==========================================
+
+const AGENT_CONFIG_KEY = 'irctc_copilot_config_v1';
+
+export function getStoredAgentConfig(): AgentConfig {
+  try {
+    const raw = localStorage.getItem(AGENT_CONFIG_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return {
+    provider: 'auto',
+    apiKey: '',
+    model: '',
+    endpoint: '',
+  };
+}
+
+export function saveStoredAgentConfig(cfg: AgentConfig): void {
+  try {
+    localStorage.setItem(AGENT_CONFIG_KEY, JSON.stringify(cfg));
+  } catch {}
+}
+
+export async function fetchAgentProviders(): Promise<AgentProviderOption[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/agent/models`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.providers || [];
+  } catch {
+    return [];
+  }
+}
+
+export interface StreamChatCallbacks {
+  onStep: (step: AgentStep) => void;
+  onDelta: (chunk: string) => void;
+  onComplete: (data: {
+    text: string;
+    steps: AgentStep[];
+    routes: RouteItinerary[];
+    suggestions: string[];
+  }) => void;
+  onError: (err: Error) => void;
+}
+
+export async function streamAgentChat(
+  messages: ChatMessage[],
+  config: AgentConfig,
+  callbacks: StreamChatCallbacks,
+  signal?: AbortSignal
+): Promise<void> {
+  const payloadMessages = messages.map(m => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/agent/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: payloadMessages,
+        config: {
+          provider: config.provider,
+          apiKey: config.apiKey || undefined,
+          model: config.model || undefined,
+          endpoint: config.endpoint || undefined,
+        },
+      }),
+      signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Agent API responded with ${res.status}: ${res.statusText}`);
+    }
+
+    if (!res.body) {
+      throw new Error('No response body from Agent API');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data: ')) {
+          const jsonStr = trimmed.slice(6);
+          try {
+            const event = JSON.parse(jsonStr);
+            if (event.type === 'step') {
+              callbacks.onStep(event.step);
+            } else if (event.type === 'delta') {
+              callbacks.onDelta(event.content);
+            } else if (event.type === 'complete') {
+              callbacks.onComplete({
+                text: event.text || '',
+                steps: event.steps || [],
+                routes: event.routes || [],
+                suggestions: event.suggestions || [],
+              });
+            } else if (event.type === 'error') {
+              callbacks.onError(new Error(event.message || 'Unknown streaming error'));
+            }
+          } catch (e) {
+            console.warn('Failed to parse SSE event:', jsonStr, e);
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    if (signal?.aborted) return;
+    callbacks.onError(err instanceof Error ? err : new Error(String(err)));
+  }
 }

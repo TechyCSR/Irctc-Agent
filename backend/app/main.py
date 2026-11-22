@@ -30,12 +30,14 @@ try:
     from app.cache import search_cache, schedule_cache, multidate_cache
     from app.watchdog import watchdog_manager, calculate_charting_status
     from app.rail_metadata import ALL_QUOTAS, TRAIN_CATEGORIES, calculate_fare_breakdown
+    from app.agent import IrctcAgentOrchestrator, get_mcp_tools_manifest, execute_mcp_tool
 except ImportError:
     from backend.app.engine import PublicSearchEngine
     from backend.app.stations import STATIONS_DATA, search_stations
     from backend.app.cache import search_cache, schedule_cache, multidate_cache
     from backend.app.watchdog import watchdog_manager, calculate_charting_status
     from backend.app.rail_metadata import ALL_QUOTAS, TRAIN_CATEGORIES, calculate_fare_breakdown
+    from backend.app.agent import IrctcAgentOrchestrator, get_mcp_tools_manifest, execute_mcp_tool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("IrctcAgent.API")
@@ -45,6 +47,8 @@ app = FastAPI(
     description="Public High-Performance Indian Railways Route & Live Seat Discovery Agent",
     version="2.0.0"
 )
+
+agent_orchestrator = IrctcAgentOrchestrator()
 
 cors_origins_env = os.getenv("CORS_ORIGINS", "*")
 allowed_origins = ["*"] if cors_origins_env == "*" else [o.strip() for o in cors_origins_env.split(",") if o.strip()]
@@ -402,6 +406,86 @@ async def get_fare_breakdown(
 ):
     """Calculates official IRCTC fare breakdown (base fare, reservation fee, superfast, GST)."""
     return calculate_fare_breakdown(fare, travel_class)
+
+
+# ==========================================
+# AGENTIC AI & MCP ENDPOINTS
+# ==========================================
+
+@app.get("/api/agent/models")
+async def get_agent_models():
+    """Returns available AI providers and model recommendations."""
+    return {
+        "providers": [
+            {
+                "id": "auto",
+                "name": "Smart IRCTC Engine (Free / No Key Required)",
+                "description": "Fast heuristic NLP agent executing live railway search tools directly",
+                "default": True,
+                "requiresKey": False
+            },
+            {
+                "id": "gemini",
+                "name": "Google Gemini",
+                "description": "Gemini 2.5 Flash / Pro (Google AI Studio Key)",
+                "default": False,
+                "requiresKey": True,
+                "models": ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+            },
+            {
+                "id": "openai",
+                "name": "OpenAI",
+                "description": "GPT-4o / GPT-4o-mini (OpenAI API Key)",
+                "default": False,
+                "requiresKey": True,
+                "models": ["gpt-4o-mini", "gpt-4o"]
+            },
+            {
+                "id": "ollama",
+                "name": "Ollama / Cloud Ollama / Local",
+                "description": "Self-hosted or cloud OpenAI-compatible endpoint",
+                "default": False,
+                "requiresKey": False,
+                "endpointDefault": "http://localhost:11434/v1",
+                "models": ["llama3.2", "qwen2.5", "mistral"]
+            }
+        ]
+    }
+
+
+@app.post("/api/agent/chat")
+async def chat_with_agent(payload: dict):
+    """
+    Streaming SSE chat endpoint for the IRCTC Agent Copilot.
+    Receives chat messages and user LLM configuration (BYOK).
+    Streams thought steps, delta tokens, and final itinerary cards.
+    """
+    messages = payload.get("messages") or []
+    config = payload.get("config") or {}
+
+    async def event_generator():
+        try:
+            async for event in agent_orchestrator.stream_chat(messages, config):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            logger.exception("Agent chat streaming failed")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/api/agent/mcp/tools")
+async def get_mcp_tools():
+    """Returns MCP tools manifest for external agents (Claude, Cursor, etc.)."""
+    return {"tools": get_mcp_tools_manifest()}
+
+
+@app.post("/api/agent/mcp/call")
+async def call_mcp_tool(payload: dict):
+    """Executes an MCP tool call directly."""
+    name = payload.get("name", "")
+    args = payload.get("arguments", {})
+    return await execute_mcp_tool(name, args)
 
 
 # Mount React production build if available

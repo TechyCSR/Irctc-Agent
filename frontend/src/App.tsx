@@ -16,7 +16,8 @@ import {
   RotateCcw,
   Trash2,
   ChevronDown,
-  Menu
+  Menu,
+  Bot
 } from 'lucide-react';
 import { StationInput } from './components/StationInput';
 import { ItineraryCard } from './components/ItineraryCard';
@@ -30,6 +31,7 @@ import { WatchdogModal } from './components/WatchdogModal';
 import { ExportShareModal } from './components/ExportShareModal';
 import { SearchingRadarLoader } from './components/SearchingRadarLoader';
 import { InteractiveTrainCanvas } from './components/InteractiveTrainCanvas';
+import { AgentChatView } from './components/AgentChat/AgentChatView';
 import { ToastProvider, useToast } from './components/Toast';
 import { useTheme } from './context/ThemeContext';
 import { searchRoutesREST, searchStations } from './services/api';
@@ -130,6 +132,9 @@ const MainApp: React.FC = () => {
   // Menu bar dropdown state
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Active App Mode: 'AGENT' (AI Chat Copilot - Default) or 'OPTIMIZER' (Direct Search Engine)
+  const [activeMode, setActiveMode] = useState<'AGENT' | 'OPTIMIZER'>('AGENT');
 
   // Close menu on click outside
   useEffect(() => {
@@ -646,8 +651,73 @@ const MainApp: React.FC = () => {
 
         {/* Main Body */}
         <main className="flex-1 max-w-6xl w-full mx-auto px-3.5 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
-          {/* Search Control Card with Glass Panel (Enlarged & Primary Focus) */}
-          <div className="glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200/90 dark:border-zinc-800/90 rounded-2xl sm:rounded-3xl p-4 sm:p-7 lg:p-8 shadow-xl dark:shadow-2xl no-print transition-all ring-1 ring-zinc-950/5 dark:ring-white/10">
+          {/* Top Segmented Mode Switcher */}
+          <div className="flex items-center justify-between gap-3 pb-1">
+            <div className="flex items-center p-1 rounded-xl bg-zinc-200/60 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/60 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setActiveMode('AGENT')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
+                  activeMode === 'AGENT'
+                    ? 'bg-white dark:bg-zinc-900 text-orange-600 dark:text-orange-400 shadow-xs'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                }`}
+              >
+                <Bot className="w-3.5 h-3.5" />
+                <span>AI Copilot</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold border border-orange-500/20">
+                  AGENT
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveMode('OPTIMIZER')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
+                  activeMode === 'OPTIMIZER'
+                    ? 'bg-white dark:bg-zinc-900 text-orange-600 dark:text-orange-400 shadow-xs'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Direct Optimizer</span>
+              </button>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>{activeMode === 'AGENT' ? 'Conversational IRCTC Search' : 'Multi-Station Classical Matrix'}</span>
+            </div>
+          </div>
+
+          {activeMode === 'AGENT' ? (
+            <AgentChatView
+              onOpenSchedule={(tNo, tName, b, a) =>
+                setActiveScheduleTrain({ no: tNo, name: tName, boarding: b, alighting: a })
+              }
+              onOpenCoachLayout={(tNo, tName) =>
+                setActiveCoachTrain({ no: tNo, name: tName })
+              }
+              onOpenFareBreakdown={(f, tc, tNo, tName) =>
+                setActiveFareBreakdown({ fare: f, travelClass: tc, trainNo: tNo, trainName: tName })
+              }
+              onOpenWatchdog={(tNo, tName, fStn, tStn, tc) =>
+                setActiveWatchdog({ trainNo: tNo, trainName: tName, fromStn: fStn, toStn: tStn, travelClass: tc })
+              }
+              onOpenExportShare={(it) => setActiveExportShare(it)}
+              onSwitchToOptimizer={(orig, dest) => {
+                setActiveMode('OPTIMIZER');
+                if (orig && dest) {
+                  Promise.all([searchStations(orig), searchStations(dest)]).then(([fromMatches, toMatches]) => {
+                    if (fromMatches && fromMatches.length > 0) setFromStation(fromMatches[0]);
+                    if (toMatches && toMatches.length > 0) setToStation(toMatches[0]);
+                  });
+                }
+              }}
+            />
+          ) : (
+            <>
+              {/* Search Control Card with Glass Panel (Enlarged & Primary Focus) */}
+              <div className="glass-card bg-white/95 dark:bg-zinc-900/95 border border-zinc-200/90 dark:border-zinc-800/90 rounded-2xl sm:rounded-3xl p-4 sm:p-7 lg:p-8 shadow-xl dark:shadow-2xl no-print transition-all ring-1 ring-zinc-950/5 dark:ring-white/10">
             {/* Focused Search Card Header */}
             <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-zinc-100 dark:border-zinc-800/80">
               <div className="flex items-center gap-2 min-w-0">
@@ -1203,6 +1273,8 @@ const MainApp: React.FC = () => {
             <div className="hidden md:block max-w-4xl mx-auto w-full space-y-4 animate-slide-up">
               <InteractiveTrainCanvas isDark={isDark} />
             </div>
+          )}
+            </>
           )}
         </main>
 

@@ -178,3 +178,43 @@ export interface SearchState {
   quota: string;
   classCode: string;
 }
+
+export type LLMProviderId = 'auto' | 'gemini' | 'openai' | 'ollama';
+
+export interface AgentConfig {
+  provider: LLMProviderId;
+  apiKey?: string;
+  model?: string;
+  endpoint?: string;
+}
+
+export interface AgentStep {
+  id?: string;
+  label: string;
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'error';
+  toolName?: string;
+  input?: any;
+  output?: any;
+  elapsedMs?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: number;
+  status?: 'sending' | 'streaming' | 'done' | 'error';
+  steps?: AgentStep[];
+  routes?: RouteItinerary[];
+  suggestions?: string[];
+}
+
+export interface AgentProviderOption {
+  id: LLMProviderId;
+  name: string;
+  description: string;
+  default: boolean;
+  requiresKey: boolean;
+  endpointDefault?: string;
+  models?: string[];
+}
