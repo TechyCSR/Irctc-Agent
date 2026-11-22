@@ -277,14 +277,24 @@ class SmartFallbackAgent:
         jokes_already_told = []
 
         for m in messages_history:
-            role = m.get("role")
+            role = m.get("role", "")
             content = m.get("content", "")
+            lower_m = content.lower()
+
+            # If user or assistant talked about jokes
+            if any(w in lower_m for w in ["joke", "jokes", "funny", "laugh", "chutkula", "hasao"]):
+                prev_topic = "JOKE"
 
             # Check if any jokes were already delivered
             for idx, j_text in enumerate(RAILWAY_JOKES):
-                first_few_words = j_text.split("\n")[0][:30]
-                if first_few_words in content:
+                first_line = j_text.split("\n")[0].lower()
+                clean_first_line = re.sub(r"[^\w\s]", "", first_line)[:25]
+                clean_m = re.sub(r"[^\w\s]", "", lower_m)
+                if clean_first_line and clean_first_line in clean_m:
                     jokes_already_told.append(idx)
+                    prev_topic = "JOKE"
+                elif ("lower berth" in clean_m or "gravity law" in clean_m) and idx == 0:
+                    jokes_already_told.append(0)
                     prev_topic = "JOKE"
 
             # Check if previous turn had train search
@@ -301,13 +311,13 @@ class SmartFallbackAgent:
         time_greeting = "Good morning" if 5 <= hour < 12 else "Good afternoon" if 12 <= hour < 17 else "Good evening"
 
         # Check if user says "another one", "one more", "tell another", "aanother one"
-        is_another_request = bool(re.search(r"\b(a*nother(\s+one)?|one\s+more|tell\s+another|next\s+one|more\s+jokes?)\b", clean_text))
-        is_joke_request = bool(re.search(r"\b(tell\s+me\s+a\s+joke|joke|make\s+me\s+laugh|something\s+funny|funny\s+incident)\b", clean_text))
+        is_another_request = bool(re.search(r"\b(a*nother(\s+(one|joke|train|route))?|one\s+more|tell\s+another|next\s+one|more\s+jokes?|aur\s+batao|ek\s+aur)\b", clean_text))
+        is_joke_request = bool(re.search(r"\b(tell\s+me\s+a\s+joke|joke|jokes|make\s+me\s+laugh|something\s+funny|funny\s+incident|chutkula)\b", clean_text))
 
         # =========================================================================
         # 1. JOKES & "ANOTHER ONE" MULTI-TURN LOGIC
         # =========================================================================
-        if is_joke_request or (is_another_request and (prev_topic == "JOKE" or len(jokes_already_told) > 0)):
+        if is_joke_request or (is_another_request and (prev_topic == "JOKE" or len(jokes_already_told) > 0 or not prev_topic)):
             available_indices = [i for i in range(len(RAILWAY_JOKES)) if i not in jokes_already_told]
             if not available_indices:
                 available_indices = list(range(len(RAILWAY_JOKES)))
@@ -667,12 +677,30 @@ class SmartFallbackAgent:
                     ]
                 }
             else:
+                if any(w in clean_text for w in ["bored", "bore", "timepass", "free"]):
+                    reply_text = (
+                        "Boredom during travel is an Indian Railways tradition! 😄\n\n"
+                        "Want to hear a hilarious train travel joke, learn a smart seat-booking lifehack (like same-train split ticketing), or check out the fastest Vande Bharat routes in India?\n\n"
+                        "Or just tell me where you'd like to travel next!"
+                    )
+                elif any(w in clean_text for w in ["help", "assist", "guide", "confused", "suggest"]):
+                    reply_text = (
+                        f"I'm here to help you navigate Indian Railways like a pro! 🚆\n\n"
+                        "Here is what I can do for you right now:\n"
+                        "1. **Find Confirmed Seats:** Discover direct trains, split-seat hacks, and alternate boarding stations.\n"
+                        "2. **Quota & Timing Intelligence:** Tatkal opening rules, Premium Tatkal surge dynamics, and ladies quota.\n"
+                        "3. **Timetables & Halt Tracking:** Stops, platform numbers, and live train timetables.\n"
+                        "4. **IRCTC Rules & Refunds:** Cancellation slabs, RAC rules, and chart preparation timelines.\n\n"
+                        "Where would you like to travel, or what railway question do you have?"
+                    )
+                else:
+                    reply_text = (
+                        f"👋 {time_greeting}! I'm here and ready to help with your Indian Railways travel. 🚆\n\n"
+                        "Whether you want to discover confirmed seats, uncover same-train split hacks, understand Tatkal rules, or check train timetables, just tell me your starting station and destination, or ask any railway question!"
+                    )
+
                 return {
-                    "text": (
-                        f"👋 {time_greeting}! I'm your **Antigravity IRCTC Copilot**! 🚆\n\n"
-                        "I can chat with you, explain railway rules, check Tatkal timings, or discover confirmed tickets (including same-train split seats).\n\n"
-                        "If you'd like to find trains, just tell me your starting city and where you want to travel!"
-                    ),
+                    "text": reply_text,
                     "steps": [],
                     "routes": [],
                     "suggestions": [
