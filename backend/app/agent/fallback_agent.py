@@ -167,7 +167,8 @@ class SmartFallbackAgent:
         routes: List[Dict[str, Any]] = []
 
         # 1. Greetings / Help
-        if any(w in lower for w in ["hi", "hello", "hey", "help", "who are you", "what can you do"]) and len(text.split()) < 5:
+        greeting_words = ["hi", "hello", "hey", "help", "who are you", "what can you do", "features", "how does this work", "namaste"]
+        if any(w in lower for w in greeting_words) and len(text.split()) <= 10:
             return {
                 "text": (
                     "👋 **Namaste! I am your Antigravity IRCTC Copilot.**\n\n"
