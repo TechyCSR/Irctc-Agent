@@ -515,117 +515,120 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
         </header>
 
         {/* Messages Thread Container */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700">
-          {messages.map((msg) => {
-            const isUser = msg.role === 'user';
-            const hasSteps = msg.steps && msg.steps.length > 0;
-            const hasRoutes = msg.routes && msg.routes.length > 0;
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 space-y-6 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800">
+          <div className="max-w-3xl lg:max-w-4xl mx-auto space-y-6 w-full">
+            {messages.map((msg) => {
+              const isUser = msg.role === 'user';
+              const hasSteps = msg.steps && msg.steps.length > 0;
+              const hasRoutes = msg.routes && msg.routes.length > 0;
 
-            return (
-              <div
-                key={msg.id}
-                className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
-              >
-                {/* Avatar */}
+              return (
                 <div
-                  className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold ${
-                    isUser
-                      ? 'bg-zinc-800 text-white dark:bg-zinc-700'
-                      : 'bg-orange-600 text-white shadow-xs'
-                  }`}
+                  key={msg.id}
+                  className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
                 >
-                  {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                </div>
+                  {/* Avatar */}
+                  <div
+                    className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold ${
+                      isUser
+                        ? 'bg-zinc-800 text-white dark:bg-zinc-700'
+                        : 'bg-orange-600 text-white shadow-xs'
+                    }`}
+                  >
+                    {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                  </div>
 
-                {/* Message Bubble Container */}
-                <div
-                  className={`space-y-3 max-w-[92%] sm:max-w-[85%] md:max-w-[78%] ${
-                    isUser ? 'items-end' : 'items-start'
-                  }`}
-                >
-                  {/* User Message */}
-                  {isUser ? (
-                    <div className="px-4 py-2.5 rounded-2xl rounded-tr-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs sm:text-sm font-medium shadow-xs leading-relaxed">
-                      {msg.content}
-                    </div>
-                  ) : (
-                    <div className="space-y-3 w-full">
-                      {/* Live Tool Action Row */}
-                      {hasSteps && (
-                        <LiveActionRow
-                          steps={msg.steps || []}
-                          isStreaming={msg.status === 'streaming'}
-                        />
-                      )}
+                  {/* Message Bubble Container */}
+                  <div
+                    className={`space-y-3 max-w-[92%] sm:max-w-[85%] md:max-w-[80%] ${
+                      isUser ? 'items-end' : 'items-start'
+                    }`}
+                  >
+                    {/* User Message */}
+                    {isUser ? (
+                      <div className="px-4 py-2.5 rounded-2xl rounded-tr-xs bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs sm:text-sm font-medium shadow-xs leading-relaxed border border-zinc-800 dark:border-zinc-200">
+                        {msg.content}
+                      </div>
+                    ) : (
+                      <div className="space-y-3 w-full">
+                        {/* Live Tool Action Row */}
+                        {hasSteps && (
+                          <LiveActionRow
+                            steps={msg.steps || []}
+                            isStreaming={msg.status === 'streaming'}
+                            hasContent={Boolean(msg.content && msg.content.trim().length > 0)}
+                          />
+                        )}
 
-                      {/* Main Assistant Text */}
-                      {msg.content && (
-                        <div className="px-4 py-3 rounded-2xl rounded-tl-xs bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800/80 text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 shadow-2xs">
-                          <MarkdownRenderer content={msg.content} />
-                        </div>
-                      )}
-
-                      {/* Interactive Route Cards */}
-                      {hasRoutes && (
-                        <div className="space-y-3 pt-1">
-                          <div className="flex items-center justify-between text-xs font-mono text-zinc-500">
-                            <span className="font-semibold text-zinc-700 dark:text-zinc-300">
-                              Top Recommended Itineraries ({msg.routes?.length})
-                            </span>
-                            <span>Ranked by seat probability & fare</span>
+                        {/* Main Assistant Text */}
+                        {msg.content && (
+                          <div className="group px-4 py-3.5 rounded-2xl rounded-tl-xs bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200/90 dark:border-zinc-800/90 hover:border-zinc-300 dark:hover:border-zinc-700/70 text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 shadow-2xs transition-all duration-200">
+                            <MarkdownRenderer content={msg.content} />
                           </div>
-                          {msg.routes?.map((route) => (
-                            <ItineraryCard
-                              key={route.id}
-                              itinerary={route}
-                              onOpenSchedule={(tNo, tName, b, a) =>
-                                onOpenSchedule?.(tNo, tName, b, a)
-                              }
-                              onOpenCoachLayout={(tNo, tName) =>
-                                onOpenCoachLayout?.(tNo, tName)
-                              }
-                              onOpenFareBreakdown={(f, tc, tNo, tName) =>
-                                onOpenFareBreakdown?.(f, tc, tNo, tName)
-                              }
-                              onOpenWatchdog={(tNo, tName, fStn, tStn, tc) =>
-                                onOpenWatchdog?.(tNo, tName, fStn, tStn, tc)
-                              }
-                              onOpenExportShare={(it) => onOpenExportShare?.(it)}
-                            />
-                          ))}
-                        </div>
-                      )}
+                        )}
 
-                      {/* Suggestion Chips */}
-                      {msg.suggestions && msg.suggestions.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {msg.suggestions.map((sug, sIdx) => (
-                            <button
-                              key={`sug-${sIdx}`}
-                              type="button"
-                              onClick={() => sendMessage(sug)}
-                              disabled={isStreaming}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-100 hover:bg-orange-50 dark:bg-zinc-800/80 dark:hover:bg-orange-950/30 text-zinc-700 hover:text-orange-600 dark:text-zinc-300 dark:hover:text-orange-400 border border-zinc-200 dark:border-zinc-700/60 hover:border-orange-300 dark:hover:border-orange-500/40 transition-all cursor-pointer shadow-2xs"
-                            >
-                              <span>{sug}</span>
-                              <ArrowRight className="w-3 h-3 opacity-60" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        {/* Interactive Route Cards */}
+                        {hasRoutes && (
+                          <div className="space-y-3 pt-1">
+                            <div className="flex items-center justify-between text-xs font-mono text-zinc-500">
+                              <span className="font-semibold text-zinc-700 dark:text-zinc-300">
+                                Top Recommended Itineraries ({msg.routes?.length})
+                              </span>
+                              <span>Ranked by seat probability & fare</span>
+                            </div>
+                            {msg.routes?.map((route) => (
+                              <ItineraryCard
+                                key={route.id}
+                                itinerary={route}
+                                onOpenSchedule={(tNo, tName, b, a) =>
+                                  onOpenSchedule?.(tNo, tName, b, a)
+                                }
+                                onOpenCoachLayout={(tNo, tName) =>
+                                  onOpenCoachLayout?.(tNo, tName)
+                                }
+                                onOpenFareBreakdown={(f, tc, tNo, tName) =>
+                                  onOpenFareBreakdown?.(f, tc, tNo, tName)
+                                }
+                                onOpenWatchdog={(tNo, tName, fStn, tStn, tc) =>
+                                  onOpenWatchdog?.(tNo, tName, fStn, tStn, tc)
+                                }
+                                onOpenExportShare={(it) => onOpenExportShare?.(it)}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Suggestion Chips */}
+                        {msg.suggestions && msg.suggestions.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {msg.suggestions.map((sug, sIdx) => (
+                              <button
+                                key={`sug-${sIdx}`}
+                                type="button"
+                                onClick={() => sendMessage(sug)}
+                                disabled={isStreaming}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-100 hover:bg-orange-50 dark:bg-zinc-800/80 dark:hover:bg-orange-950/30 text-zinc-700 hover:text-orange-600 dark:text-zinc-300 dark:hover:text-orange-400 border border-zinc-200 dark:border-zinc-700/60 hover:border-orange-300 dark:hover:border-orange-500/40 transition-all cursor-pointer shadow-2xs"
+                              >
+                                <span>{sug}</span>
+                                <ArrowRight className="w-3 h-3 opacity-60" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-          <div ref={messagesEndRef} />
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
         {/* Input Bar & Footer */}
-        <div className="p-3 sm:p-4 border-t border-zinc-200 dark:border-zinc-800/80 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md shrink-0">
-          <div className="max-w-4xl mx-auto space-y-2">
-            <div className="relative flex items-end gap-2 p-1.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300/80 dark:border-zinc-800 shadow-inner-xs focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 transition-all">
+        <div className="p-3 sm:p-4 border-t border-zinc-200 dark:border-zinc-800/90 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md shrink-0">
+          <div className="max-w-3xl lg:max-w-4xl mx-auto space-y-2">
+            <div className="group relative flex items-end gap-2 p-1.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300/80 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-700/80 focus-within:border-orange-500 dark:focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:shadow-[0_0_20px_rgba(249,115,22,0.12)] transition-all duration-200">
               <textarea
                 ref={textareaRef}
                 value={inputPrompt}
