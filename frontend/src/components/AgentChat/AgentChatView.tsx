@@ -38,12 +38,20 @@ const INITIAL_SUGGESTIONS = [
 const SESSIONS_STORAGE_KEY = 'irctc_copilot_sessions_v2';
 const ACTIVE_SESSION_STORAGE_KEY = 'irctc_copilot_active_session_id';
 
+function getDynamicGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 function createDefaultWelcomeMessage(): ChatMessage {
+  const greeting = getDynamicGreeting();
   return {
     id: `welcome-${Date.now()}`,
     role: 'assistant',
     content:
-      "👋 **Namaste! I am your Antigravity IRCTC Copilot.**\n\nI can help you find confirmed train tickets, uncover same-train split seats, check Tatkal quotas, explain cancellation rules, and track live schedules.\n\nType where you want to travel, or select one of the suggested journeys below!",
+      `👋 **Namaste and ${greeting}! I am IRCTC AGENT.**\n\nI am your autonomous Indian Railways AI assistant. Powered by real-time train intelligence and deep rail search algorithms, I can help you:\n\n• 🎫 **Discover Confirmed Tickets:** Direct trains, same-train split-seat hacks, and alternate boarding routes.\n• ⚡ **Tatkal & Quotas:** Tatkal opening timings, Premium Tatkal surge rules, Ladies, and Senior Citizen quotas.\n• 🕒 **Timetables & Halts:** Live schedules, intermediate stops, and platform numbers.\n• 📋 **IRCTC Rules & Guidance:** Cancellation charges, refund rules, RAC rules, and luggage allowances.\n\nType where you want to travel, or select one of the suggested journeys below!`,
     timestamp: Date.now(),
     status: 'done',
     suggestions: INITIAL_SUGGESTIONS,
@@ -78,7 +86,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    const defaultSess = createNewSessionObject('Welcome to Copilot');
+    const defaultSess = createNewSessionObject('Welcome to IRCTC AGENT');
     return [defaultSess];
   });
 
@@ -205,7 +213,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
 
       // Update session title dynamically from first real query if it's default
       const sessionTitle =
-        activeSession.title === 'Welcome to Copilot' || activeSession.title === 'New Travel Chat'
+        activeSession.title === 'Welcome to IRCTC AGENT' || activeSession.title === 'Welcome to Copilot' || activeSession.title === 'New Travel Chat'
           ? query.length > 30
             ? query.substring(0, 30) + '...'
             : query
@@ -468,7 +476,7 @@ export const AgentChatView: React.FC<AgentChatViewProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-xs sm:text-sm font-bold text-zinc-950 dark:text-zinc-100 truncate">
-                  {activeSession?.title || 'Travel Copilot'}
+                  {activeSession?.title || 'IRCTC AGENT'}
                 </h2>
                 <span className="hidden md:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
