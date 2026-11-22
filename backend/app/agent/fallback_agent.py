@@ -42,18 +42,33 @@ MONTHS = {
 
 
 def parse_date_from_text(text: str) -> Optional[str]:
-    """Extracts a travel date from natural text query."""
+    """Extracts a travel date from natural text query including slang/abbreviations."""
     lower = text.lower()
     now = datetime.now()
 
-    if "tomorrow" in lower:
-        d = now + timedelta(days=1)
-        return d.strftime("%d-%m-%Y")
-    if "today" in lower:
-        return now.strftime("%d-%m-%Y")
-    if "day after tomorrow" in lower:
+    # Day after tomorrow slang
+    if any(w in lower for w in ["day after tomorrow", "dat", "day after tmrw", "day after tomor"]):
         d = now + timedelta(days=2)
         return d.strftime("%d-%m-%Y")
+
+    # Tomorrow slang: tomorrow, tomor, tmrw, tomo, 2moro, 2morrow, tomrw
+    if re.search(r"\b(tomorrow|tomor|tmrw|tomo|2moro|2morrow|tomrw)\b", lower):
+        d = now + timedelta(days=1)
+        return d.strftime("%d-%m-%Y")
+
+    # Today slang: today, tdy, tonight, curren, current
+    if re.search(r"\b(today|tdy|tonight|curren|current)\b", lower):
+        return now.strftime("%d-%m-%Y")
+
+    # Day names: e.g. "on friday", "this saturday", "next sunday"
+    weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    for i, w in enumerate(weekdays):
+        if re.search(rf"\b(on\s+|this\s+|next\s+)?{w}\b", lower):
+            days_ahead = (i - now.weekday() + 7) % 7
+            if days_ahead == 0:
+                days_ahead = 7
+            target_date = now + timedelta(days=days_ahead)
+            return target_date.strftime("%d-%m-%Y")
 
     # Match DD-MM-YYYY or DD/MM/YYYY
     match_dmy = re.search(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b", text)
@@ -135,57 +150,194 @@ def parse_quota_from_text(text: str) -> str:
 
 
 def extract_station_pair(text: str) -> Tuple[Optional[str], Optional[str]]:
-    """Extracts from and to station names/cities."""
+    """Extracts from and to station names/cities with automatic word cleaning."""
+    clean_words = r"\b(tomorrow|tomor|tmrw|tomo|2moro|today|tdy|tonight|next|curren|current|train|trains|ticket|tickets|fast|express|stops?|station|city|confirmed|seat|seats|berth|quota|tatkal|under|\d+)\b"
+
+    def sanitize(station_str: str) -> str:
+        s = re.sub(clean_words, "", station_str, flags=re.IGNORECASE).strip()
+        s = re.sub(r"[^\w\s]", "", s).strip()
+        return s
+
     # Pattern: "from X to Y"
     match = re.search(
-        r"from\s+([a-zA-Z\s]{2,20}?)\s+to\s+([a-zA-Z\s]{2,20}?)(?:\s+(?:on|for|in|under|between|with|date|by|tomorrow|today|day|confirmed|tatkal|quota|next|\d)|$|[,\.\?!])",
+        r"from\s+([a-zA-Z\s]{2,25}?)\s+to\s+([a-zA-Z\s]{2,25}?)(?:\s+(?:on|for|in|under|between|with|date|by|tomorrow|tomor|tmrw|today|day|confirmed|tatkal|quota|next|\d)|$|[,\.\?!])",
         text,
         re.IGNORECASE,
     )
     if match:
-        return match.group(1).strip(), match.group(2).strip()
+        f = sanitize(match.group(1))
+        t = sanitize(match.group(2))
+        if f and t:
+            return f, t
 
     # Pattern: "X to Y"
-    match2 = re.search(r"\b([a-zA-Z]{3,15})\s+to\s+([a-zA-Z]{3,15})\b", text, re.IGNORECASE)
+    match2 = re.search(r"\b([a-zA-Z]{3,20})\s+to\s+([a-zA-Z\s]{3,20})\b", text, re.IGNORECASE)
     if match2:
-        return match2.group(1).strip(), match2.group(2).strip()
+        f = sanitize(match2.group(1))
+        t = sanitize(match2.group(2))
+        if f and t:
+            return f, t
 
     # Pattern: "between X and Y"
     match3 = re.search(
-        r"between\s+([a-zA-Z\s]{2,20}?)\s+and\s+([a-zA-Z\s]{2,20}?)(?:\s+(?:on|for|in|under|tomorrow|today|day|next|\d)|$|[,\.\?!])",
+        r"between\s+([a-zA-Z\s]{2,25}?)\s+and\s+([a-zA-Z\s]{2,25}?)(?:\s+(?:on|for|in|under|tomorrow|tomor|today|day|next|\d)|$|[,\.\?!])",
         text,
         re.IGNORECASE,
     )
     if match3:
-        return match3.group(1).strip(), match3.group(2).strip()
+        f = sanitize(match3.group(1))
+        t = sanitize(match3.group(2))
+        if f and t:
+            return f, t
 
     return None, None
 
 
+RAILWAY_JOKES = [
+    (
+        "Here's one every Indian train traveler knows in their soul! 🚆😂\n\n"
+        "**The Universal Lower Berth Gravity Law:**\n"
+        "The exact second the train leaves the platform, an Uncle ji appears with a pained expression:\n"
+        "> *\"Beta, meri kamar me thoda dard hai... kya tum upper berth pe adjust kar loge please?\"* 🧳\n\n"
+        "And just like that, your confirmed lower berth becomes a charity donation to humanity!"
+    ),
+    (
+        "The Great Indian Extension Board Tournament! 🔌⚡\n\n"
+        "In a Sleeper coach with 72 passengers and only 2 working charging points:\n"
+        "One genius brings a 3-pin adapter, another plugs in an extension board, and by midnight "
+        "there are 14 phones, 3 power banks, and someone's electric kettle running on a single 220V railway socket! 📱🤣"
+    ),
+    (
+        "The 2-Minute Halt Water Sprint! 🏃‍♂️💨\n\n"
+        "Train halts at an intermediate station for exactly 120 seconds.\n"
+        "40 passengers jump down like Olympic sprinters carrying 3 empty Bisleri bottles each to reach the lone station tap, "
+        "while the guard already blows the whistle at second 45! The greatest cardio workout in India! 🚰😂"
+    ),
+    (
+        "The Philosophical Meaning of RAC: 🧘‍♂️🚆\n\n"
+        "In Western philosophy, you seek your other half in romance.\n"
+        "In Indian Railways, you find your other half on Side Lower 7 with an unknown stranger named Sharma ji, "
+        "who by 10 PM has shared his entire life story, his daughter's wedding video, and 4 homemade theplas with you! 🫓"
+    ),
+    (
+        "The Platform Shift Announcement: 📢🏃\n\n"
+        "You struggle with 4 heavy trolleys, 2 kids, and 3 backpacks up the foot-over-bridge to Platform 1.\n"
+        "The exact second you step onto Platform 1, the loudspeakers chime:\n"
+        "> *\"Kripya dhyan dein... Gadi sankhya 12628... Platform kramank 1 ke sthan par Platform 8 par aayegi!\"* 💀\n\n"
+        "Olympic sprint coaches should scout Indian railway stations!"
+    ),
+    (
+        "The IRCTC Chart Preparation Ritual: 🕒📈\n\n"
+        "Checking PNR status at 3:58 PM for a 4:00 PM chart preparation:\n"
+        "• Refresh 1: WL 45\n"
+        "• Refresh 2: WL 45\n"
+        "• Refresh 3 (4:00 PM): *Server Busy / Session Expired!* 🤯\n"
+        "The adrenaline rush is higher than any suspense thriller film! 🍿"
+    ),
+    (
+        "The Middle Berth Suspension Bridge: ⛓️🛌\n\n"
+        "Lower berth passengers want to chat until 11:30 PM.\n"
+        "Upper berth passenger wants to climb up at 8:00 PM.\n"
+        "And the Middle berth person is standing in the aisle at 9:00 PM looking like an unfolded ironing board waiting for permission to exist! 😂"
+    ),
+    (
+        "The 3 AM Phantom Chaiwala: ☕👻\n\n"
+        "Outside temperature: 8°C. Coach lights: Off. Entire coach: Fast asleep.\n"
+        "Suddenly at 3:15 AM between two pitch-black stations, a silhouette walks down the aisle whispering with intense urgency:\n"
+        "> *\"Chai... Chai-garam... Chai...\"* ☕\n\n"
+        "Where did he board? Where is he going? Nobody knows. He is eternal."
+    )
+]
+
+
 class SmartFallbackAgent:
     """
-    Autonomous fallback conversational agent that executes Indian Railway tools
-    and generates helpful structured responses without requiring an external LLM key.
+    Autonomous context-aware conversational agent that executes Indian Railway tools,
+    tracks multi-turn session memory, handles slang/typos, and generates lively non-deterministic replies.
     """
 
-    async def execute_query(self, message: str) -> Dict[str, Any]:
-        """Processes the natural language query, runs tools, and formats the reply."""
+    async def execute_query(
+        self,
+        message: str,
+        messages_history: Optional[List[Dict[str, str]]] = None
+    ) -> Dict[str, Any]:
+        """Processes the natural language query with full conversational history, runs tools, and formats the reply."""
         text = message.strip()
         lower = text.lower()
         clean_text = re.sub(r"[^\w\s]", "", lower).strip()
+        messages_history = messages_history or []
+
+        # =========================================================================
+        # 0. MULTI-TURN CONTEXT MEMORY RECOVERY
+        # =========================================================================
+        prev_topic = None
+        prev_src = None
+        prev_dst = None
+        prev_date = None
+        jokes_already_told = []
+
+        for m in messages_history:
+            role = m.get("role")
+            content = m.get("content", "")
+
+            # Check if any jokes were already delivered
+            for idx, j_text in enumerate(RAILWAY_JOKES):
+                first_few_words = j_text.split("\n")[0][:30]
+                if first_few_words in content:
+                    jokes_already_told.append(idx)
+                    prev_topic = "JOKE"
+
+            # Check if previous turn had train search
+            if role == "assistant" and "Found" in content and "trains from" in content:
+                prev_topic = "SEARCH_TRAINS"
+                m_stn = re.search(r"from\s+`([A-Z0-9]+)`\s+to\s+`([A-Z0-9]+)`(?:\s+on\s+\*\*([0-9\-]+)\*\*)?", content)
+                if m_stn:
+                    prev_src, prev_dst = m_stn.group(1), m_stn.group(2)
+                    if m_stn.group(3):
+                        prev_date = m_stn.group(3)
+
+        # Dynamic time-of-day greeting
+        hour = datetime.now().hour
+        time_greeting = "Good morning" if 5 <= hour < 12 else "Good afternoon" if 12 <= hour < 17 else "Good evening"
+
+        # Check if user says "another one", "one more", "tell another", "aanother one"
+        is_another_request = bool(re.search(r"\b(a*nother(\s+one)?|one\s+more|tell\s+another|next\s+one|more\s+jokes?)\b", clean_text))
+        is_joke_request = bool(re.search(r"\b(tell\s+me\s+a\s+joke|joke|make\s+me\s+laugh|something\s+funny|funny\s+incident)\b", clean_text))
+
+        # =========================================================================
+        # 1. JOKES & "ANOTHER ONE" MULTI-TURN LOGIC
+        # =========================================================================
+        if is_joke_request or (is_another_request and (prev_topic == "JOKE" or len(jokes_already_told) > 0)):
+            available_indices = [i for i in range(len(RAILWAY_JOKES)) if i not in jokes_already_told]
+            if not available_indices:
+                available_indices = list(range(len(RAILWAY_JOKES)))
+            import random
+            joke_idx = random.choice(available_indices)
+            selected_joke = RAILWAY_JOKES[joke_idx]
+            return {
+                "text": selected_joke,
+                "steps": [],
+                "routes": [],
+                "suggestions": [
+                    "Tell me another railway joke",
+                    "Delhi to Jodhpur tomorrow in 3A",
+                    "What is difference between 3E and 3A?",
+                    "Check chart preparation time"
+                ]
+            }
 
         steps: List[Dict[str, Any]] = []
         routes: List[Dict[str, Any]] = []
 
         # =========================================================================
-        # 1. GENERAL CONVERSATION & CHITCHAT (Zero Tools, Natural Friendly Assistant)
+        # 2. GENERAL CONVERSATION & CHITCHAT (Zero Tools, Natural Friendly Assistant)
         # =========================================================================
 
         # A. Identity / Name / Creator
         if re.search(r"\b(what(s|\s+is)?\s+your\s+name|who\s+are\s+you|who\s+made\s+you|who\s+created\s+you|what\s+are\s+you|your\s+name)\b", clean_text):
             return {
                 "text": (
-                    "👋 **Namaste! I am Antigravity IRCTC Copilot.**\n\n"
+                    f"👋 **Namaste and {time_greeting}! I am Antigravity IRCTC Copilot.**\n\n"
                     "I am your autonomous Indian Railways travel assistant and ticket intelligence engine. "
                     "I can help you:\n"
                     "• 🎫 **Discover Confirmed Tickets:** Find direct trains, same-train split-seat hacks, and alternate boarding routes.\n"
@@ -197,7 +349,7 @@ class SmartFallbackAgent:
                 "steps": [],
                 "routes": [],
                 "suggestions": [
-                    "Trains from Delhi to Mumbai tomorrow in 3A",
+                    "Trains from Delhi to Jodhpur tomorrow in 3A",
                     "From Jhansi to Bangalore on 28 Dec under 1500",
                     "What are the Tatkal booking timings and refund rules?",
                     "Compare 5-day seat availability from NDLS to SBC"
@@ -206,59 +358,41 @@ class SmartFallbackAgent:
 
         # B. Laughter / Fun / Reactions (lol, haha, lmao, etc.)
         if re.search(r"\b(lol|lmao|rofl|haha+|hehe+|xd|funny|hilarious|bhai|yaar)\b", clean_text) and not any(k in clean_text for k in ["train", "ticket", "station", "schedule", "pnr", "from", "to"]):
+            laugh_replies = [
+                "😄 Glad I could bring a smile! Traveling on Indian Railways is full of fun moments—from Uncle ji asking for the lower berth saying *'beta meri kamar me dard hai'*, to fighting for the lone phone charging socket in Sleeper class! 🔌🚆\n\nAre you planning a trip somewhere soon, or need help finding confirmed seats?",
+                "😂 Haha! Nothing beats the chaos and charm of Indian Railways. From the 3 AM phantom chaiwala to sprinting across Platform 1 to Platform 8 in 2 minutes, every journey is an adventure! 🚂\n\nWhere are you headed next?",
+                "Glad you enjoyed that! 😄 If you need tickets, Tatkal rules, or live train schedules, let me know. What journey are you planning?"
+            ]
+            import random
             return {
-                "text": (
-                    "😄 Glad I could bring a smile! Traveling on Indian Railways is full of fun moments—"
-                    "from Uncle ji asking for the lower berth saying *'beta meri kamar me dard hai'*, "
-                    "to fighting for the lone phone charging socket in Sleeper class! 🔌🚆\n\n"
-                    "Are you planning a trip somewhere soon, or need help finding confirmed seats?"
-                ),
+                "text": random.choice(laugh_replies),
                 "steps": [],
                 "routes": [],
                 "suggestions": [
-                    "Delhi to Mumbai tomorrow 3A confirmed only",
+                    "Delhi to Jodhpur tomorrow 3A confirmed only",
                     "Jhansi to Bangalore on 28 Dec under 1500",
                     "Tell me a railway joke",
                     "What is RAC ticket?"
                 ]
             }
 
-        # C. Jokes / Entertainment
-        if re.search(r"\b(tell\s+me\s+a\s+joke|joke|make\s+me\s+laugh|something\s+funny)\b", clean_text):
-            return {
-                "text": (
-                    "Here's a classic Indian Railways reality! 🚆😂\n\n"
-                    "**Question:** Why do lower berths in Indian trains have the highest gravitational pull in the universe?\n\n"
-                    "**Answer:** Because the moment the train starts moving, an uncle appears out of nowhere and says:\n"
-                    "> *\"Beta, meri tabiyat theek nahi hai... thoda upper berth pe chale jaoge kya please?\"* 🧳\n\n"
-                    "Want to book a confirmed middle or upper berth so no one asks to swap? Let me know your origin and destination!"
-                ),
-                "steps": [],
-                "routes": [],
-                "suggestions": [
-                    "Trains from Delhi to Mumbai tomorrow",
-                    "What is difference between 3E and 3A?",
-                    "Check chart preparation time"
-                ]
-            }
-
-        # D. How are you / Status
+        # C. How are you / Status
         if re.search(r"\b(how\s+are\s+you|how\s+are\s+u|hows\s+it\s+going|wassup|whats\s+up|kya\s+haal\s+hai|sab\s+badhiya)\b", clean_text):
             return {
                 "text": (
-                    "I'm running on green signals and cruising right on time, just like the Vande Bharat Express! 🚅💨\n\n"
-                    "How are you doing today? Ready to plan your next rail adventure, check train availability, or verify Tatkal rules?"
+                    f"I'm running on green signals and cruising right on time, just like the Vande Bharat Express! 🚅💨\n\n"
+                    f"{time_greeting}! How are you doing today? Ready to plan your next rail adventure, check train availability, or verify Tatkal rules?"
                 ),
                 "steps": [],
                 "routes": [],
                 "suggestions": [
-                    "Trains from Delhi to Mumbai tomorrow in 3A",
+                    "Trains from Delhi to Jodhpur tomorrow in 3A",
                     "Jhansi to Bangalore on 28 Dec under 1500",
                     "When does chart prepare for today evening?"
                 ]
             }
 
-        # E. Gratitude / Appreciation
+        # D. Gratitude / Appreciation
         if re.search(r"\b(thank\s+you|thanks|thx|thanku|appreciate\s+it|good\s+job|great\s+job|awesome|shukriya|dhanyawad)\b", clean_text) and not any(k in clean_text for k in ["train", "ticket", "book"]):
             return {
                 "text": (
@@ -274,33 +408,33 @@ class SmartFallbackAgent:
                 ]
             }
 
-        # F. Affirmations / Acknowledgments (ok, cool, sure, alright, etc.)
+        # E. Affirmations / Acknowledgments (ok, cool, sure, alright, etc.)
         if re.search(r"^(ok|okay|cool|alright|sure|got\s+it|fine|understood|yep|yeah|k|nice|perfect)$", clean_text):
             return {
                 "text": (
                     "Understood! Whenever you're ready to plan your trip, just type what you need.\n\n"
-                    "For example: *'Find trains from Delhi to Mumbai tomorrow in 3A'* or *'Check Tatkal rules for AC classes'*."
+                    "For example: *'Find trains from Delhi to Jodhpur tomorrow in 3A'* or *'Check Tatkal rules for AC classes'*."
                 ),
                 "steps": [],
                 "routes": [],
                 "suggestions": [
-                    "Trains from Delhi to Mumbai tomorrow 3A",
+                    "Trains from Delhi to Jodhpur tomorrow 3A",
                     "Jhansi to Bangalore on 28 Dec under 1500",
                     "Check chart preparation time for 18:00 departure"
                 ]
             }
 
-        # G. Greetings / Namaste / Hi / Hello
+        # F. Greetings / Namaste / Hi / Hello
         is_greeting = bool(re.search(r"\b(hi|hello|hey|namaste|greetings|good\s+(morning|afternoon|evening))\b", clean_text))
         has_travel_intent = bool(re.search(r"\b(from|to|train|trains|ticket|tickets|station|pnr|schedule|route|berth|seat|seats|availability|fare)\b", clean_text))
         if is_greeting and not has_travel_intent and len(text.split()) <= 6:
             return {
                 "text": (
-                    "👋 **Namaste! I am your Antigravity IRCTC Copilot.**\n\n"
+                    f"👋 **Namaste and {time_greeting}! I am your Antigravity IRCTC Copilot.**\n\n"
                     "I can help you discover confirmed Indian Railway tickets, uncover same-train split seats, check tatkal quotas, track live schedules, and optimize fares.\n\n"
                     "**Try asking me:**\n"
-                    "• *'Find confirmed trains from Jhansi to Bangalore on 28 Dec under ₹1500'*\n"
-                    "• *'Trains from Delhi to Mumbai tomorrow in 3A'*\n"
+                    "• *'Find confirmed trains from Delhi to Jodhpur tomorrow in 3A'*\n"
+                    "• *'Trains from Jhansi to Bangalore on 28 Dec under ₹1500'*\n"
                     "• *'Check schedule for train 12628'*\n"
                     "• *'Compare seat availability from NDLS to SBC for the next 5 days'*\n"
                     "• *'When does the chart get prepared for 18:00 departure today?'*"
@@ -308,14 +442,14 @@ class SmartFallbackAgent:
                 "steps": [],
                 "routes": [],
                 "suggestions": [
-                    "Trains from Jhansi to Bangalore on 28 Dec under 1500",
-                    "Delhi to Mumbai tomorrow 3A",
+                    "Trains from Delhi to Jodhpur tomorrow 3A",
+                    "Jhansi to Bangalore on 28 Dec under 1500",
                     "Schedule for 12628",
                     "Compare 5 days NDLS to SBC"
                 ]
             }
 
-        # H. Specific General Railway Concepts (Zero Tools needed, Instant accurate guidance)
+        # G. Specific General Railway Concepts (Zero Tools needed, Instant accurate guidance)
         # What is RAC?
         if re.search(r"\b(what\s+is\s+rac|explain\s+rac|rac\s+rule|rac\s+meaning|rac\s+ticket)\b", clean_text):
             return {
@@ -353,7 +487,7 @@ class SmartFallbackAgent:
                 "steps": [],
                 "routes": [],
                 "suggestions": [
-                    "Trains from Delhi to Mumbai tomorrow in 3A",
+                    "Trains from Delhi to Jodhpur tomorrow in 3A",
                     "What is RAC ticket?",
                     "What are Tatkal booking timings?"
                 ]
@@ -483,18 +617,37 @@ class SmartFallbackAgent:
 
         # 5. Train Ticket Search (Primary Use Case)
         from_raw, to_raw = extract_station_pair(text)
-        
-        # If no explicit "from/to" pattern, test if well known city pairs are mentioned
+
+        # Multi-city scan if no explicit "from/to"
         if not from_raw or not to_raw:
             found_cities = []
             for city in CITY_TO_DEFAULT_CODE.keys():
                 if city.lower() in lower:
-                    found_cities.append(city)
+                    code = CITY_TO_DEFAULT_CODE[city]
+                    if not any(fc[1] == code for fc in found_cities):
+                        found_cities.append((city, code))
             if len(found_cities) >= 2:
-                from_raw, to_raw = found_cities[0], found_cities[1]
+                from_raw, to_raw = found_cities[0][0], found_cities[1][0]
+
+        # Multi-Turn Context Carryforward:
+        # If user asks a follow-up ("what about 3A?", "is there tatkal?", "check next day")
+        # and from/to is not repeated, reuse prev_src and prev_dst!
+        if (not from_raw or not to_raw) and prev_src and prev_dst:
+            has_followup_intent = bool(
+                parse_class_from_text(text)
+                or parse_budget_from_text(text)
+                or parse_date_from_text(text)
+                or "tatkal" in lower
+                or "confirm" in lower
+                or "available" in lower
+                or "sleeper" in lower
+                or "cheaper" in lower
+                or "faster" in lower
+            )
+            if has_followup_intent:
+                from_raw, to_raw = prev_src, prev_dst
 
         if not from_raw or not to_raw:
-            # Check if user was actually trying to search for a train or travel
             has_rail_search_intent = bool(re.search(r"\b(train|trains|ticket|tickets|seat|seats|berth|travel|go|going|book|booking|journey|route|reach|leave)\b", clean_text))
             if has_rail_search_intent:
                 return {
@@ -502,13 +655,13 @@ class SmartFallbackAgent:
                         "I would be glad to find the best trains and seats for you! 🚆\n\n"
                         "Could you please specify both your **origin** and **destination**?\n\n"
                         "**For example:**\n"
-                        "• *'Trains from New Delhi to Mumbai on 25 Dec in 3A'*\n"
+                        "• *'Trains from Delhi to Jodhpur tomorrow in 3A'*\n"
                         "• *'From Jhansi to Bangalore on 28 Dec under 1500'*"
                     ),
                     "steps": [],
                     "routes": [],
                     "suggestions": [
-                        "Trains from Delhi to Mumbai tomorrow 3A",
+                        "Trains from Delhi to Jodhpur tomorrow",
                         "From Jhansi to Bangalore on 28 Dec under 1500",
                         "Trains from Lucknow to Bangalore under 1500"
                     ]
@@ -516,21 +669,21 @@ class SmartFallbackAgent:
             else:
                 return {
                     "text": (
-                        "I'm your **Antigravity IRCTC Copilot**! 🚆\n\n"
+                        f"👋 {time_greeting}! I'm your **Antigravity IRCTC Copilot**! 🚆\n\n"
                         "I can chat with you, explain railway rules, check Tatkal timings, or discover confirmed tickets (including same-train split seats).\n\n"
                         "If you'd like to find trains, just tell me your starting city and where you want to travel!"
                     ),
                     "steps": [],
                     "routes": [],
                     "suggestions": [
-                        "Trains from Delhi to Mumbai tomorrow in 3A",
+                        "Trains from Delhi to Jodhpur tomorrow in 3A",
                         "Jhansi to Bangalore on 28 Dec under 1500",
-                        "What are the Tatkal booking timings and refund rules?",
+                        "Tell me a railway joke",
                         "What is RAC ticket?"
                     ]
                 }
 
-        date = parse_date_from_text(text) or (datetime.now() + timedelta(days=1)).strftime("%d-%m-%Y")
+        date = parse_date_from_text(text) or prev_date or (datetime.now() + timedelta(days=1)).strftime("%d-%m-%Y")
         budget = parse_budget_from_text(text)
         pref_class = parse_class_from_text(text)
         quota = parse_quota_from_text(text)
