@@ -60,10 +60,50 @@ allowed_origins = ["*"] if cors_origins_env == "*" else [o.strip() for o in cors
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def cors_headers_middleware(request, call_next):
+    origin = request.headers.get("origin") or "*"
+    if request.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, Accept, Origin",
+            "Access-Control-Max-Age": "86400",
+        }
+        return JSONResponse(content={"ok": True}, status_code=200, headers=headers)
+
+    response = await call_next(request)
+    if origin and origin != "*":
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+    return response
+
+
+@app.options("/{full_path:path}")
+async def universal_preflight_handler(full_path: str):
+    """Fallback explicit preflight responder for gateways and reverse proxies."""
+    return JSONResponse(
+        content={"ok": True},
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+        },
+    )
 
 engine = PublicSearchEngine()
 
