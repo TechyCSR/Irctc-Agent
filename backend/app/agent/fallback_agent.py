@@ -135,7 +135,11 @@ def parse_quota_from_text(text: str) -> str:
 def extract_station_pair(text: str) -> Tuple[Optional[str], Optional[str]]:
     """Extracts from and to station names/cities."""
     # Pattern: "from X to Y"
-    match = re.search(r"from\s+([a-zA-Z\s]{2,20}?)\s+to\s+([a-zA-Z\s]{2,20}?)(?:\s+(?:on|for|in|under|between|with|date|by)|$|[,\.\?!])", text, re.IGNORECASE)
+    match = re.search(
+        r"from\s+([a-zA-Z\s]{2,20}?)\s+to\s+([a-zA-Z\s]{2,20}?)(?:\s+(?:on|for|in|under|between|with|date|by|tomorrow|today|day|confirmed|tatkal|quota|next|\d)|$|[,\.\?!])",
+        text,
+        re.IGNORECASE,
+    )
     if match:
         return match.group(1).strip(), match.group(2).strip()
 
@@ -145,7 +149,11 @@ def extract_station_pair(text: str) -> Tuple[Optional[str], Optional[str]]:
         return match2.group(1).strip(), match2.group(2).strip()
 
     # Pattern: "between X and Y"
-    match3 = re.search(r"between\s+([a-zA-Z\s]{2,20}?)\s+and\s+([a-zA-Z\s]{2,20}?)(?:\s+|$)", text, re.IGNORECASE)
+    match3 = re.search(
+        r"between\s+([a-zA-Z\s]{2,20}?)\s+and\s+([a-zA-Z\s]{2,20}?)(?:\s+(?:on|for|in|under|tomorrow|today|day|next|\d)|$|[,\.\?!])",
+        text,
+        re.IGNORECASE,
+    )
     if match3:
         return match3.group(1).strip(), match3.group(2).strip()
 
@@ -166,9 +174,10 @@ class SmartFallbackAgent:
         steps: List[Dict[str, Any]] = []
         routes: List[Dict[str, Any]] = []
 
-        # 1. Greetings / Help
-        greeting_words = ["hi", "hello", "hey", "help", "who are you", "what can you do", "features", "how does this work", "namaste"]
-        if any(w in lower for w in greeting_words) and len(text.split()) <= 10:
+        # 1. Greetings / Help (strictly whole-word match, excluded if travel intent exists)
+        is_greeting = bool(re.search(r"\b(hi|hello|hey|help|namaste|who are you|what can you do|features|how does this work)\b", lower))
+        has_travel_intent = bool(re.search(r"\b(from|to|train|trains|ticket|tickets|station|pnr|schedule|route|berth|seat|seats|availability|fare)\b", lower))
+        if is_greeting and not has_travel_intent and len(text.split()) <= 10:
             return {
                 "text": (
                     "👋 **Namaste! I am your Antigravity IRCTC Copilot.**\n\n"
