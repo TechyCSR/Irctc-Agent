@@ -124,10 +124,8 @@ const MainApp: React.FC = () => {
   const { showToast } = useToast();
   const { toggleTheme, isDark } = useTheme();
 
-  // Boot sequence state
-  const [isBooting, setIsBooting] = useState<boolean>(() => {
-    return !sessionStorage.getItem('irctc_agent_booted');
-  });
+  // Boot sequence state: Display the iconic train boot loader on page refresh/load
+  const [isBooting, setIsBooting] = useState<boolean>(true);
 
   // Menu bar dropdown state
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -223,9 +221,6 @@ const MainApp: React.FC = () => {
   const [recentSearches, setRecentSearches] = useState<RecentSearchItem[]>([]);
 
   const handleBootComplete = useCallback(() => {
-    try {
-      sessionStorage.setItem('irctc_agent_booted', 'true');
-    } catch {}
     setIsBooting(false);
   }, []);
 
