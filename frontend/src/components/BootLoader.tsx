@@ -19,6 +19,11 @@ export const BootLoader: React.FC<BootLoaderProps> = ({ onComplete }) => {
     ];
 
     let currentStep = 0;
+    // Guaranteed safety timeout: Never block screen for more than 900ms
+    const safetyTimeout = setTimeout(() => {
+      onComplete();
+    }, 900);
+
     const interval = setInterval(() => {
       if (currentStep < steps.length) {
         setProgress(steps[currentStep].progress);
@@ -26,14 +31,18 @@ export const BootLoader: React.FC<BootLoaderProps> = ({ onComplete }) => {
         currentStep++;
       } else {
         clearInterval(interval);
+        clearTimeout(safetyTimeout);
         setIsFading(true);
         setTimeout(() => {
           onComplete();
-        }, 300);
+        }, 200);
       }
-    }, 180);
+    }, 150);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(safetyTimeout);
+    };
   }, [onComplete]);
 
   return (

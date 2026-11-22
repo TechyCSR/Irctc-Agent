@@ -222,10 +222,12 @@ const MainApp: React.FC = () => {
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<RecentSearchItem[]>([]);
 
-  const handleBootComplete = () => {
-    sessionStorage.setItem('irctc_agent_booted', 'true');
+  const handleBootComplete = useCallback(() => {
+    try {
+      sessionStorage.setItem('irctc_agent_booted', 'true');
+    } catch {}
     setIsBooting(false);
-  };
+  }, []);
 
   // URL Query Sync on mount
   useEffect(() => {
