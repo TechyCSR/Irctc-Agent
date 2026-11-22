@@ -209,6 +209,14 @@ export interface ChatMessage {
   suggestions?: string[];
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
 export interface AgentProviderOption {
   id: LLMProviderId;
   name: string;

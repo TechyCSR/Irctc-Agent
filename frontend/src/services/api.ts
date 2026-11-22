@@ -276,8 +276,9 @@ export interface StreamChatCallbacks {
 
 export async function streamAgentChat(
   messages: ChatMessage[],
-  config: AgentConfig,
   callbacks: StreamChatCallbacks,
+  sessionId?: string,
+  config?: Partial<AgentConfig>,
   signal?: AbortSignal
 ): Promise<void> {
   const payloadMessages = messages.map(m => ({
@@ -285,21 +286,28 @@ export async function streamAgentChat(
     content: m.content,
   }));
 
+  const payload: Record<string, any> = {
+    messages: payloadMessages,
+  };
+  if (sessionId) {
+    payload.session_id = sessionId;
+  }
+  if (config && (config.provider || config.apiKey || config.model || config.endpoint)) {
+    payload.config = {
+      provider: config.provider,
+      apiKey: config.apiKey || undefined,
+      model: config.model || undefined,
+      endpoint: config.endpoint || undefined,
+    };
+  }
+
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/agent/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        messages: payloadMessages,
-        config: {
-          provider: config.provider,
-          apiKey: config.apiKey || undefined,
-          model: config.model || undefined,
-          endpoint: config.endpoint || undefined,
-        },
-      }),
+      body: JSON.stringify(payload),
       signal,
     });
 
