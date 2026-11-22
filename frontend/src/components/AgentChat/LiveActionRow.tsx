@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   MapPin,
   Train,
@@ -11,12 +11,15 @@ import {
   CheckCircle2,
   Loader2,
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import type { AgentStep } from '../../types';
 
 interface LiveActionRowProps {
   steps: AgentStep[];
   isStreaming?: boolean;
+  hasContent?: boolean;
 }
 
 function getToolMeta(step: AgentStep) {
@@ -96,11 +99,68 @@ function getToolMeta(step: AgentStep) {
   };
 }
 
-export const LiveActionRow: React.FC<LiveActionRowProps> = ({ steps, isStreaming = false }) => {
+export const LiveActionRow: React.FC<LiveActionRowProps> = ({
+  steps,
+  isStreaming = false,
+  hasContent = false,
+}) => {
+  // Collapse automatically when content starts or streaming finishes
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => !isStreaming || hasContent);
+
+  useEffect(() => {
+    if (hasContent || !isStreaming) {
+      setIsCollapsed(true);
+    } else {
+      setIsCollapsed(false);
+    }
+  }, [hasContent, isStreaming]);
+
   if (!steps || steps.length === 0) return null;
 
+  // Extract unique distinct tool titles for summary
+  const toolTitles = Array.from(
+    new Set(steps.map((s) => getToolMeta(s).title))
+  ).slice(0, 3);
+
+  // If collapsed, display a sleek summary pill
+  if (isCollapsed) {
+    return (
+      <div className="my-2">
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(false)}
+          className="group inline-flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-100/80 hover:bg-zinc-200/60 dark:bg-zinc-900/80 dark:hover:bg-zinc-800/80 transition-all cursor-pointer text-left shadow-2xs"
+          title="Click to view tool execution pipeline"
+        >
+          <span className="relative flex h-2 w-2 shrink-0">
+            {isStreaming && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+            )}
+            <span
+              className={`relative inline-flex rounded-full h-2 w-2 ${
+                isStreaming ? 'bg-orange-500' : 'bg-emerald-500'
+              }`}
+            />
+          </span>
+
+          <span className="text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300">
+            ⚡ {steps.length} {steps.length === 1 ? 'Action' : 'Actions'} Executed
+          </span>
+
+          {toolTitles.length > 0 && (
+            <span className="hidden sm:inline-block text-[10px] text-zinc-400 dark:text-zinc-500 truncate max-w-xs">
+              ({toolTitles.join(' • ')})
+            </span>
+          )}
+
+          <ChevronDown className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-200 transition-transform" />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="my-2.5 rounded-2xl border border-zinc-200/90 dark:border-zinc-800/80 bg-zinc-50/90 dark:bg-zinc-900/60 p-3 sm:p-3.5 shadow-2xs backdrop-blur-xs">
+    <div className="my-2.5 rounded-2xl border border-zinc-200/90 dark:border-zinc-800/80 bg-zinc-50/90 dark:bg-zinc-900/60 p-3 sm:p-3.5 shadow-2xs backdrop-blur-xs transition-all">
       {/* Header bar */}
       <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-zinc-200/70 dark:border-zinc-800/70">
         <div className="flex items-center gap-2">
@@ -118,9 +178,20 @@ export const LiveActionRow: React.FC<LiveActionRowProps> = ({ steps, isStreaming
             {isStreaming ? 'Live Railway Agent Execution' : 'Agent Action Pipeline'}
           </span>
         </div>
-        <span className="text-[11px] font-mono text-zinc-400">
-          {steps.length} {steps.length === 1 ? 'Action' : 'Actions'} Executed
-        </span>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono text-zinc-400">
+            {steps.length} {steps.length === 1 ? 'Action' : 'Actions'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(true)}
+            className="p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200/50 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Collapse tool actions"
+          >
+            <ChevronUp className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Horizontal Scrollable Action Cards Row */}
