@@ -347,7 +347,7 @@ class SmartFallbackAgent:
         if re.search(r"\b(what(s|\s+is)?\s+your\s+name|who\s+are\s+you|who\s+made\s+you|who\s+created\s+you|what\s+are\s+you|your\s+name)\b", clean_text):
             return {
                 "text": (
-                    f"👋 **Namaste and {time_greeting}! I am Antigravity IRCTC Copilot.**\n\n"
+                    f"👋 **Namaste and {time_greeting}! I am IRCTC AGENT.**\n\n"
                     "I am your autonomous Indian Railways travel assistant and ticket intelligence engine. "
                     "I can help you:\n"
                     "• 🎫 **Discover Confirmed Tickets:** Find direct trains, same-train split-seat hacks, and alternate boarding routes.\n"
@@ -440,7 +440,7 @@ class SmartFallbackAgent:
         if is_greeting and not has_travel_intent and len(text.split()) <= 6:
             return {
                 "text": (
-                    f"👋 **Namaste and {time_greeting}! I am your Antigravity IRCTC Copilot.**\n\n"
+                    f"👋 **Namaste and {time_greeting}! I am IRCTC AGENT.**\n\n"
                     "I can help you discover confirmed Indian Railway tickets, uncover same-train split seats, check tatkal quotas, track live schedules, and optimize fares.\n\n"
                     "**Try asking me:**\n"
                     "• *'Find confirmed trains from Delhi to Jodhpur tomorrow in 3A'*\n"
