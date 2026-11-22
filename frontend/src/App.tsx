@@ -131,8 +131,8 @@ const MainApp: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Active App Mode: 'AGENT' (AI Chat Copilot - Default) or 'OPTIMIZER' (Direct Search Engine)
-  const [activeMode, setActiveMode] = useState<'AGENT' | 'OPTIMIZER'>('AGENT');
+  // Active App Mode: 'OPTIMIZER' (Direct Search Engine - Default) or 'AGENT' (AI Chat Copilot)
+  const [activeMode, setActiveMode] = useState<'AGENT' | 'OPTIMIZER'>('OPTIMIZER');
 
   // Close menu on click outside
   useEffect(() => {
@@ -563,19 +563,6 @@ const MainApp: React.FC = () => {
                   </button>
                 )}
 
-                {/* Quick Switch to IRCTC AGENT when viewing Optimizer */}
-                {activeMode === 'OPTIMIZER' && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveMode('AGENT')}
-                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 border border-orange-500/20 hover:bg-orange-500/20 transition cursor-pointer shadow-2xs"
-                    title="Switch back to IRCTC AGENT"
-                  >
-                    <Bot className="w-3.5 h-3.5" />
-                    <span>IRCTC AGENT</span>
-                  </button>
-                )}
-
                 {/* Menu Bar with Search Mode, Theme, and How It Works */}
                 <div className="relative" ref={menuRef}>
                   <button
@@ -609,25 +596,6 @@ const MainApp: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            setActiveMode('AGENT');
-                            setIsMenuOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-mono font-medium transition cursor-pointer ${
-                            activeMode === 'AGENT'
-                              ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold border border-orange-500/20'
-                              : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                          }`}
-                        >
-                          <span className="flex items-center gap-2">
-                            <Bot className="w-4 h-4 text-orange-500" />
-                            <span>IRCTC AGENT (Default)</span>
-                          </span>
-                          {activeMode === 'AGENT' && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
                             setActiveMode('OPTIMIZER');
                             setIsMenuOpen(false);
                           }}
@@ -639,9 +607,28 @@ const MainApp: React.FC = () => {
                         >
                           <span className="flex items-center gap-2">
                             <Zap className="w-4 h-4 text-amber-500" />
-                            <span>Direct Optimizer</span>
+                            <span>Direct Optimizer (Default)</span>
                           </span>
                           {activeMode === 'OPTIMIZER' && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMode('AGENT');
+                            setIsMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-mono font-medium transition cursor-pointer ${
+                            activeMode === 'AGENT'
+                              ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold border border-orange-500/20'
+                              : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Bot className="w-4 h-4 text-orange-500" />
+                            <span>IRCTC AGENT (AI Chat)</span>
+                          </span>
+                          {activeMode === 'AGENT' && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
                         </button>
                       </div>
 
