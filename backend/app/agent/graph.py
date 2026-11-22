@@ -108,9 +108,35 @@ def get_chat_model(user_config: Dict[str, Any]):
             return None
 
     elif provider == "ollama":
+        base_url = endpoint or os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_ENDPOINT)
+        # Fast-fail if running in cloud container and pointing to local host without daemon
+        is_cloud = bool(
+            os.getenv("X_ZOHO_CATALYST_LISTEN_PORT")
+            or os.getenv("CATALYST_ENV")
+            or os.getenv("VERCEL")
+            or os.getenv("RENDER")
+        )
+        is_localhost = "localhost" in base_url or "127.0.0.1" in base_url
+        if is_cloud and is_localhost:
+            logger.info("Cloud deployment detected with local Ollama URL; fast-routing to SmartFallbackAgent")
+            return None
+
+        # Fast socket probe if localhost to avoid 45s TCP connect timeout
+        if is_localhost:
+            import socket
+            from urllib.parse import urlparse
+            try:
+                parsed = urlparse(base_url)
+                probe_host = parsed.hostname or "127.0.0.1"
+                probe_port = parsed.port or 11434
+                with socket.create_connection((probe_host, probe_port), timeout=0.15):
+                    pass
+            except Exception:
+                logger.info(f"Ollama daemon not reachable at {base_url}; fast-routing to SmartFallbackAgent")
+                return None
+
         try:
             from langchain_openai import ChatOpenAI
-            base_url = endpoint or os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_ENDPOINT)
             m = model_name or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
             key = api_key or os.getenv("OLLAMA_API_KEY", "ollama")
             return ChatOpenAI(
@@ -118,7 +144,7 @@ def get_chat_model(user_config: Dict[str, Any]):
                 api_key=key,
                 model=m,
                 temperature=0.2,
-                timeout=45
+                timeout=4.0
             )
         except Exception as e:
             logger.warning(f"Failed to initialize Ollama model: {e}")
@@ -165,27 +191,20 @@ class IrctcAgentOrchestrator:
             }
             return
 
-        # If no external LLM model configured, run SmartFallbackAgent
+        # If no external LLM model configured, run SmartFallbackAgent directly
         if model is None:
-            yield {
-                "type": "step",
-                "step": {
-                    "label": "Analyzing query via IRCTC Agent Engine",
-                    "type": "thinking"
-                }
-            }
-
             res = await self.fallback.execute_query(latest_user_text)
 
+            # Only yield steps if actual tools were invoked
             for step in res.get("steps", []):
                 yield {"type": "step", "step": step}
 
-            # Simulate streaming tokens for great UX
+            # Simulate streaming tokens cleanly for fluid UX
             text = res.get("text", "")
-            chunk_size = 40
+            chunk_size = 25
             for i in range(0, len(text), chunk_size):
                 yield {"type": "delta", "content": text[i:i + chunk_size]}
-                await asyncio.sleep(0.015)
+                await asyncio.sleep(0.008)
 
             yield {
                 "type": "complete",
@@ -298,17 +317,15 @@ class IrctcAgentOrchestrator:
             }
 
         except Exception as e:
-            logger.exception("LLM LangGraph execution failed, falling back to SmartFallbackAgent")
-            yield {
-                "type": "step",
-                "step": {
-                    "label": f"LLM error: {e}. Switching to heuristic fallback.",
-                    "type": "error"
-                }
-            }
-            # Fallback seamlessly
+            logger.warning(f"LLM execution failed ({e}), routing smoothly to SmartFallbackAgent")
             fb_res = await self.fallback.execute_query(latest_user_text)
+            for step in fb_res.get("steps", []):
+                yield {"type": "step", "step": step}
             text = fb_res.get("text", "")
+            chunk_size = 25
+            for i in range(0, len(text), chunk_size):
+                yield {"type": "delta", "content": text[i:i + chunk_size]}
+                await asyncio.sleep(0.008)
             yield {
                 "type": "complete",
                 "text": text,
